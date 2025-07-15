@@ -28,7 +28,6 @@ jobs:
   linux-android:
     name: Linux + Android
     runs-on: ubuntu-latest
-    container: swift:6.1
     strategy:
       matrix:
         config: ["debug", "release"]
