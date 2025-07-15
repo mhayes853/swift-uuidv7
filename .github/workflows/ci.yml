@@ -70,20 +70,11 @@ jobs:
   wasm:
     name: WASM
     runs-on: ubuntu-latest
+    container: swift:6.1
     steps:
       - uses: actions/checkout@v4
       - uses: bytecodealliance/actions/wasmtime/setup@v1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-      - name: Install Swift and Swift SDK for WebAssembly
-        run: |
-          PREFIX=/opt/swift
-          set -ex
-          curl -f -o /tmp/swift.tar.gz "https://download.swift.org/swift-6.1-release/ubuntu2204/swift-6.1-RELEASE/swift-6.1-RELEASE-ubuntu22.04.tar.gz"
-          sudo mkdir -p $PREFIX; sudo tar -xzf /tmp/swift.tar.gz -C $PREFIX --strip-component 1
-          $PREFIX/usr/bin/swift sdk install https://github.com/swiftwasm/swift/releases/download/swift-wasm-6.1-RELEASE/swift-wasm-6.1-RELEASE-wasm32-unknown-wasi.artifactbundle.zip --checksum 7550b4c77a55f4b637c376f5d192f297fe185607003a6212ad608276928db992
-          echo "$PREFIX/usr/bin" >> $GITHUB_PATH
+      - uses: swiftwasm/setup-swiftwasm@v2
       - name: Build tests
         run: swift build --traits SwiftUUIDV7Tagged --triple wasm32-unknown-wasi --build-tests
       - name: Run tests
