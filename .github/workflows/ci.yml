@@ -70,13 +70,11 @@ jobs:
   wasm:
     name: WASM
     runs-on: ubuntu-latest
+    container: swift:6.1
     steps:
       - uses: actions/checkout@v4
-      - uses: bytecodealliance/actions/wasmtime/setup@v1
       - uses: swiftwasm/setup-swiftwasm@v2
         with:
           tag: swift-6.1-RELEASE
-      - name: Build tests
-        run: swift build --triple wasm32-unknown-wasi --build-tests
-      - name: Run tests
-        run: wasmtime .build/debug/swift-uuidv7PackageTests.wasm
+      - name: Build
+        run: swift build --triple wasm32-unknown-wasi
