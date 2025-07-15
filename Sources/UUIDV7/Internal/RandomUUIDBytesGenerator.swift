@@ -2,6 +2,8 @@ import Foundation
 
 #if canImport(WinSDK)
   import WinSDK
+#elseif canImport(Android)
+  import Android
 #elseif os(WASI)
   import WASILibc
 #endif
