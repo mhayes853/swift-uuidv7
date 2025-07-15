@@ -34,10 +34,10 @@ extension RandomUUIDBytesGenerator {
   #if os(Windows)
     private func readBytes() {
       BCryptGenRandom(
-        NULL,
+        nil,
         self.cache,
-        MemoryLayout<uuid_t>.size * Self.cacheSize,
-        BCRYPT_RNG_USE_ENTROPY_IN_BUFFER | BCRYPT_USE_SYSTEM_PREFERRED_RNG
+        UInt32(MemoryLayout<uuid_t>.size * Self.cacheSize),
+        UInt32(BCRYPT_RNG_USE_ENTROPY_IN_BUFFER | BCRYPT_USE_SYSTEM_PREFERRED_RNG)
       )
     }
   #elseif os(WASI)
