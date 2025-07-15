@@ -9,6 +9,18 @@
   // MARK: - BytesRepresentation
 
   extension UUIDV7 {
+    /// A query expression representing a ``UUIDV7`` as bytes.
+    ///
+    /// ```swift
+    /// @Table
+    /// struct Item {
+    ///   @Column(as: UUIDV7.BytesRepresentation.self)
+    ///   let id: UUIDV7
+    /// }
+    ///
+    /// Item.insert { $0.id } values: { UUIDV7() }
+    /// // INSERT INTO "items" ("id") VALUES (<blob>)
+    /// ```
     public struct BytesRepresentation: QueryRepresentable {
       public var queryOutput: UUIDV7
 
@@ -51,6 +63,18 @@
   // MARK: - UppercaseRepresentation
 
   extension UUIDV7 {
+    /// A query expression representing a ``UUIDV7`` as a lowercased string.
+    ///
+    /// ```swift
+    /// @Table
+    /// struct Item {
+    ///   @Column(as: UUIDV7.UppercasedRepresentation.self)
+    ///   let id: UUIDV7
+    /// }
+    ///
+    /// Item.insert { $0.id } values: { UUIDV7() }
+    /// // INSERT INTO "items" ("id") VALUES ('1915C92E-B61E-7E3E-AFEA-2B5F3EA2DCF0')
+    /// ```
     public struct UppercaseRepresentation: QueryRepresentable {
       public var queryOutput: UUIDV7
 
