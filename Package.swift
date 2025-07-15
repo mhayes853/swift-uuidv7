@@ -5,6 +5,7 @@ import PackageDescription
 
 let package = Package(
   name: "swift-uuidv7",
+  platforms: [.iOS(.v13), .macOS(.v10_15), .tvOS(.v13), .watchOS(.v7), .macCatalyst(.v13)],
   products: [.library(name: "UUIDV7", targets: ["UUIDV7"])],
   traits: [
     .trait(
@@ -21,14 +22,27 @@ let package = Package(
       description: "Conforms UUIDV7 to GRDB's DatabaseValueConvertible protocol."
     )
   ],
+  dependencies: [
+    .package(url: "https://github.com/groue/GRDB.swift", from: "7.5.0"),
+    .package(url: "https://github.com/pointfreeco/swift-tagged", from: "0.10.0")
+  ],
   targets: [
-    .target(name: "UUIDV7", swiftSettings: [.define("SWIFT_UUIDV7_APPLE_PLATFORMS", .whenApple)]),
+    .target(
+      name: "UUIDV7",
+      dependencies: [
+        .product(
+          name: "GRDB",
+          package: "GRDB.swift",
+          condition: .when(traits: ["SwiftUUIDV7GRDB"])
+        ),
+        .product(
+          name: "Tagged",
+          package: "swift-tagged",
+          condition: .when(traits: ["SwiftUUIDV7Tagged"])
+        )
+      ]
+    ),
     .testTarget(name: "UUIDV7Tests", dependencies: ["UUIDV7"])
-  ]
+  ],
+  swiftLanguageModes: [.v6]
 )
-
-extension BuildSettingCondition {
-  static let whenApple = Self.when(
-    platforms: [.macOS, .iOS, .macCatalyst, .watchOS, .tvOS, .visionOS]
-  )
-}

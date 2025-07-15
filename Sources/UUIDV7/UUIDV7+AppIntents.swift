@@ -7,7 +7,7 @@
       self.rawValue.entityIdentifierString
     }
 
-    public static func entityIdentifier(for entityIdentifierString: String) -> UUIDV7? {
+    public static func entityIdentifier(for entityIdentifierString: String) -> Self? {
       UUID.entityIdentifier(for: entityIdentifierString).flatMap(Self.init(rawValue:))
     }
   }
