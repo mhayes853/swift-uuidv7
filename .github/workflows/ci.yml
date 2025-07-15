@@ -56,7 +56,7 @@ jobs:
           branch: swift-6.1-release
           tag: 6.1-RELEASE
       - name: "Test Swift Package on Windows"
-        run: swift test --configuration ${{ matrix.config }} --traits SwiftUUIDV7Tagged,SwiftUUIDV7StructuredQueries
+        run: swift test --configuration ${{ matrix.config }} --traits SwiftUUIDV7Tagged
 
   wasm:
     name: WASM
@@ -76,6 +76,6 @@ jobs:
           $PREFIX/usr/bin/swift sdk install https://github.com/swiftwasm/swift/releases/download/swift-wasm-6.1-RELEASE/swift-wasm-6.1-RELEASE-wasm32-unknown-wasi.artifactbundle.zip --checksum 7550b4c77a55f4b637c376f5d192f297fe185607003a6212ad608276928db992
           echo "$PREFIX/usr/bin" >> $GITHUB_PATH
       - name: Build tests
-        run: swift build --triple wasm32-unknown-wasi --build-tests
+        run: swift build --traits SwiftUUIDV7Tagged --triple wasm32-unknown-wasi --build-tests
       - name: Run tests
         run: wasmtime .build/debug/swift-uuidv7PackageTests.wasm
