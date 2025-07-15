@@ -77,6 +77,6 @@ jobs:
         with:
           tag: swift-6.1-RELEASE
       - name: Build tests
-        run: swift build --traits SwiftUUIDV7Tagged --triple wasm32-unknown-wasi --build-tests
+        run: swift build --triple wasm32-unknown-wasi --build-tests
       - name: Run tests
         run: wasmtime .build/debug/swift-uuidv7PackageTests.wasm
