@@ -2,13 +2,16 @@ import Foundation
 
 #if canImport(WinSDK)
   import WinSDK
+#elseif os(WASI)
+  import WASILibc
 #endif
 
 // MARK: - RandomUUIDBytesGenerator
 
 struct RandomUUIDBytesGenerator {
+  static nonisolated(unsafe) let shared = Lock(Self())
+
   private static let cacheSize = 256
-  static let shared = Lock(Self())
 
   private var cache = UnsafeMutablePointer<uuid_t>.allocate(capacity: Self.cacheSize)
   private var cacheIndex = 0

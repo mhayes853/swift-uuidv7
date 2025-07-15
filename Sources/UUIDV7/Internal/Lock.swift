@@ -27,35 +27,39 @@
 // MARK: - Lock
 
 struct Lock<State> {
-  private final class LockedBuffer: ManagedBuffer<State, _Lock.Primitive> {
-    deinit {
-      withUnsafeMutablePointerToElements { _Lock.deinitialize($0) }
-    }
-  }
-
-  private let buffer: ManagedBuffer<State, _Lock.Primitive>
+  private let buffer: ManagedBuffer<State, PlatformLock.Primitive>
 
   init(_ initial: State) {
-    buffer = LockedBuffer.create(minimumCapacity: 1) { buffer in
-      buffer.withUnsafeMutablePointerToElements { _Lock.initialize($0) }
+    self.buffer = LockedBuffer.create(minimumCapacity: 1) { buffer in
+      buffer.withUnsafeMutablePointerToElements { PlatformLock.initialize($0) }
       return initial
     }
   }
+}
 
-  func withLock<R>(_ critical: (inout State) throws -> R) rethrows -> R {
-    try buffer.withUnsafeMutablePointers { header, lock in
-      _Lock.lock(lock)
-      defer { _Lock.unlock(lock) }
+extension Lock {
+  private final class LockedBuffer: ManagedBuffer<State, PlatformLock.Primitive> {
+    deinit {
+      withUnsafeMutablePointerToElements { PlatformLock.deinitialize($0) }
+    }
+  }
+}
+
+extension Lock {
+  func withLock<R>(_ critical: (inout State) throws -> sending R) rethrows -> R {
+    try self.buffer.withUnsafeMutablePointers { header, lock in
+      PlatformLock.lock(lock)
+      defer { PlatformLock.unlock(lock) }
       return try critical(&header.pointee)
     }
   }
 }
 
-extension Lock: @unchecked Sendable {}
+extension Lock: @unchecked Sendable where State: Sendable {}
 
-// MARK: - _Lock
+// MARK: - PlatformLock
 
-private struct _Lock {
+private enum PlatformLock {
   #if canImport(Darwin)
     typealias Primitive = os_unfair_lock
   #elseif canImport(Glibc) || canImport(Musl) || canImport(Bionic)
@@ -76,14 +80,9 @@ private struct _Lock {
     #error("Unsupported platform")
   #endif
 
-  typealias PlatformLock = UnsafeMutablePointer<Primitive>
-  let platformLock: PlatformLock
+  typealias Pointer = UnsafeMutablePointer<Primitive>
 
-  private init(_ platformLock: PlatformLock) {
-    self.platformLock = platformLock
-  }
-
-  fileprivate static func initialize(_ platformLock: PlatformLock) {
+  static func initialize(_ platformLock: Pointer) {
     #if canImport(Darwin)
       platformLock.initialize(to: os_unfair_lock())
     #elseif canImport(Glibc) || canImport(Musl) || canImport(Bionic)
@@ -98,7 +97,7 @@ private struct _Lock {
     #endif
   }
 
-  fileprivate static func deinitialize(_ platformLock: PlatformLock) {
+  static func deinitialize(_ platformLock: Pointer) {
     #if canImport(Glibc) || canImport(Musl) || canImport(Bionic)
       let result = pthread_mutex_destroy(platformLock)
       precondition(result == 0, "pthread_mutex_destroy failed")
@@ -106,7 +105,7 @@ private struct _Lock {
     platformLock.deinitialize(count: 1)
   }
 
-  fileprivate static func lock(_ platformLock: PlatformLock) {
+  static func lock(_ platformLock: Pointer) {
     #if canImport(Darwin)
       os_unfair_lock_lock(platformLock)
     #elseif canImport(Glibc) || canImport(Musl) || canImport(Bionic)
@@ -119,7 +118,7 @@ private struct _Lock {
     #endif
   }
 
-  fileprivate static func unlock(_ platformLock: PlatformLock) {
+  static func unlock(_ platformLock: Pointer) {
     #if canImport(Darwin)
       os_unfair_lock_unlock(platformLock)
     #elseif canImport(Glibc) || canImport(Musl) || canImport(Bionic)
@@ -131,45 +130,5 @@ private struct _Lock {
     #else
       #error("Unsupported platform")
     #endif
-  }
-
-  static func allocate() -> _Lock {
-    let platformLock = PlatformLock.allocate(capacity: 1)
-    initialize(platformLock)
-    return _Lock(platformLock)
-  }
-
-  func deinitialize() {
-    _Lock.deinitialize(platformLock)
-    platformLock.deallocate()
-  }
-
-  func lock() {
-    _Lock.lock(platformLock)
-  }
-
-  func unlock() {
-    _Lock.unlock(platformLock)
-  }
-
-  /// Acquire the lock for the duration of the given block.
-  ///
-  /// This convenience method should be preferred to `lock` and `unlock` in
-  /// most situations, as it ensures that the lock will be released regardless
-  /// of how `body` exits.
-  ///
-  /// - Parameter body: The block to execute while holding the lock.
-  /// - Returns: The value returned by the block.
-  func withLock<T>(_ body: () throws -> T) rethrows -> T {
-    self.lock()
-    defer {
-      self.unlock()
-    }
-    return try body()
-  }
-
-  // specialise Void return (for performance)
-  func withLockVoid(_ body: () throws -> Void) rethrows {
-    try self.withLock(body)
   }
 }
