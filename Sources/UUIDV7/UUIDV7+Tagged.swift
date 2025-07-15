@@ -40,7 +40,7 @@
 
   #if canImport(AppIntents)
     @available(iOS 16, macOS 13, tvOS 16, watchOS 9, *)
-    extension Tagged: EntityIdentifierConvertible where RawValue == UUIDV7 {
+    extension Tagged: @retroactive EntityIdentifierConvertible where RawValue == UUIDV7 {
       public var entityIdentifierString: String {
         self.rawValue.entityIdentifierString
       }

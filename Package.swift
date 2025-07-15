@@ -24,7 +24,8 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/groue/GRDB.swift", from: "7.5.0"),
-    .package(url: "https://github.com/pointfreeco/swift-tagged", from: "0.10.0")
+    .package(url: "https://github.com/pointfreeco/swift-tagged", from: "0.10.0"),
+    .package(url: "https://github.com/pointfreeco/swift-structured-queries", from: "0.8.1")
   ],
   targets: [
     .target(
@@ -39,6 +40,11 @@ let package = Package(
           name: "Tagged",
           package: "swift-tagged",
           condition: .when(traits: ["SwiftUUIDV7Tagged"])
+        ),
+        .product(
+          name: "StructuredQueriesCore",
+          package: "swift-structured-queries",
+          condition: .when(traits: ["SwiftUUIDV7StructuredQueries"])
         )
       ]
     ),

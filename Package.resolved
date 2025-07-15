@@ -1,5 +1,5 @@
 {
-  "originHash" : "01c8551295b19ef2138489d2e94b57d947abde2654c4dbee4eb57d6680cc8098",
+  "originHash" : "a750a182dfcf3a476553bc425d22599b5d4a6257b42432df3b6ac759702e239b",
   "pins" : [
     {
       "identity" : "grdb.swift",
@@ -11,12 +11,57 @@
       }
     },
     {
+      "identity" : "swift-custom-dump",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pointfreeco/swift-custom-dump",
+      "state" : {
+        "revision" : "82645ec760917961cfa08c9c0c7104a57a0fa4b1",
+        "version" : "1.3.3"
+      }
+    },
+    {
+      "identity" : "swift-snapshot-testing",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pointfreeco/swift-snapshot-testing",
+      "state" : {
+        "revision" : "37230a37e83f1b7023be08e1b1a2603fcb1567fb",
+        "version" : "1.18.4"
+      }
+    },
+    {
+      "identity" : "swift-structured-queries",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pointfreeco/swift-structured-queries",
+      "state" : {
+        "revision" : "efd928f9f1c5bee4356a5d8a9a8e862ce4abb8a3",
+        "version" : "0.8.1"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax",
+      "state" : {
+        "revision" : "f99ae8aa18f0cf0d53481901f88a0991dc3bd4a2",
+        "version" : "601.0.1"
+      }
+    },
+    {
       "identity" : "swift-tagged",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/swift-tagged",
       "state" : {
         "revision" : "3907a9438f5b57d317001dc99f3f11b46882272b",
         "version" : "0.10.0"
+      }
+    },
+    {
+      "identity" : "xctest-dynamic-overlay",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pointfreeco/xctest-dynamic-overlay",
+      "state" : {
+        "revision" : "39de59b2d47f7ef3ca88a039dff3084688fe27f4",
+        "version" : "1.5.2"
       }
     }
   ],
