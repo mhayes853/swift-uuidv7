@@ -75,7 +75,7 @@ jobs:
       - uses: bytecodealliance/actions/wasmtime/setup@v1
       - uses: swiftwasm/setup-swiftwasm@v2
         with:
-          tag: 6.1-RELEASE
+          tag: swift-6.1-RELEASE
       - name: Build tests
         run: swift build --traits SwiftUUIDV7Tagged --triple wasm32-unknown-wasi --build-tests
       - name: Run tests
