@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: "Test Swift Package on Linux"
-        run: swift test --configuration ${{ matrix.config }} --enable-all-traits
+        run: swift test --configuration ${{ matrix.config }} --traits SwiftUUIDV7Tagged,SwiftUUIDV7StructuredQueries
       - name: "Test Swift Package on Android"
         uses: swift-android-sdk/swift-android-action@v2
         with:
