@@ -37,7 +37,8 @@ let package = Package(
     .package(url: "https://github.com/groue/GRDB.swift", from: "7.5.0"),
     .package(url: "https://github.com/pointfreeco/swift-tagged", from: "0.10.0"),
     .package(url: "https://github.com/pointfreeco/swift-structured-queries", from: "0.8.1"),
-    .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.9.2")
+    .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.9.2"),
+    .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0")
   ],
   targets: [
     .target(

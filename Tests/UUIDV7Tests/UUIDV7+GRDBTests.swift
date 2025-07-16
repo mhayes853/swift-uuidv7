@@ -16,8 +16,8 @@
     @Test("No Args Generates Random UUIDV7")
     func noArgsGeneratesRandomUUIDV7() async throws {
       let (uuid1, uuid2) = try await self.database.read { db in
-        let uuid1 = try UUIDV7.fetchOne(db, sql: "SELECT uuid7()")!
-        let uuid2 = try UUIDV7.fetchOne(db, sql: "SELECT uuid7()")!
+        let uuid1 = try UUIDV7.fetchOne(db, sql: "SELECT uuidv7()")!
+        let uuid2 = try UUIDV7.fetchOne(db, sql: "SELECT uuidv7()")!
         return (uuid1, uuid2)
       }
       #expect(uuid2 > uuid1)
@@ -27,7 +27,7 @@
     func createsUUIDV7FromDate() async throws {
       let date = Date(staticISO8601: "2024-09-09T22:41:15+0000")
       let uuid = try await self.database.read { db in
-        try UUIDV7.fetchOne(db, sql: "SELECT uuid7_from_date(?)", arguments: [date])!
+        try UUIDV7.fetchOne(db, sql: "SELECT uuidv7_from_date(?)", arguments: [date])!
       }
       #expect(uuid.date == date)
     }
@@ -38,7 +38,7 @@
       let uuid = try await self.database.read { db in
         try UUIDV7.fetchOne(
           db,
-          sql: "SELECT uuid7_from_date(?)",
+          sql: "SELECT uuidv7_from_date(?)",
           arguments: [date.timeIntervalSince1970]
         )!
       }
@@ -51,7 +51,7 @@
       let uuid = try await self.database.read { db in
         try UUIDV7.fetchOne(
           db,
-          sql: "SELECT uuid7_from_date(?)",
+          sql: "SELECT uuidv7_from_date(?)",
           arguments: [Int(date.timeIntervalSince1970)]
         )!
       }
@@ -64,7 +64,7 @@
       let uuid = try await self.database.read { db in
         try UUIDV7.fetchOne(
           db,
-          sql: "SELECT uuid7_from_unixepoch(?)",
+          sql: "SELECT uuidv7_from_unixepoch(?)",
           arguments: [date.timeIntervalSince1970]
         )!
       }
@@ -77,7 +77,7 @@
       let uuid = try await self.database.read { db in
         try UUIDV7.fetchOne(
           db,
-          sql: "SELECT uuid7_from_unixepoch(?)",
+          sql: "SELECT uuidv7_from_unixepoch(?)",
           arguments: [Int(date.timeIntervalSince1970)]
         )!
       }
@@ -88,7 +88,7 @@
     func createsUUIDV7FromDateString() async throws {
       let string: StaticString = "2024-09-09 22:41:15"
       let uuid = try await self.database.read { db in
-        try UUIDV7.fetchOne(db, sql: "SELECT uuid7_from_date(?)", arguments: [string.description])!
+        try UUIDV7.fetchOne(db, sql: "SELECT uuidv7_from_date(?)", arguments: [string.description])!
       }
       #expect(uuid.date == Date(staticISO8601: "2024-09-09T22:41:15+0000"))
     }
@@ -97,7 +97,7 @@
     func createsUUIDV7FromString() async throws {
       let string = UUIDV7().uuidString
       let uuid = try await self.database.read { db in
-        try UUIDV7.fetchOne(db, sql: "SELECT uuid7_from_text(?)", arguments: [string])!
+        try UUIDV7.fetchOne(db, sql: "SELECT uuidv7_from_text(?)", arguments: [string])!
       }
       #expect(uuid.uuidString == string)
     }
@@ -106,7 +106,7 @@
     func failsToCreateUUIDV7FromUUIDV4String() async throws {
       let string = UUID().uuidString
       let uuid = try await self.database.read { db in
-        try UUIDV7.fetchOne(db, sql: "SELECT uuid7_from_text(?)", arguments: [string])
+        try UUIDV7.fetchOne(db, sql: "SELECT uuidv7_from_text(?)", arguments: [string])
       }
       #expect(uuid == nil)
     }
@@ -114,7 +114,7 @@
     @Test("Fails to Create UUIDV7 From Random String")
     func failsToCreateUUIDV7FromRandomString() async throws {
       let uuid = try await self.database.read { db in
-        try UUIDV7.fetchOne(db, sql: "SELECT uuid7_from_text(?)", arguments: ["blob"])
+        try UUIDV7.fetchOne(db, sql: "SELECT uuidv7_from_text(?)", arguments: ["blob"])
       }
       #expect(uuid == nil)
     }
@@ -124,7 +124,7 @@
       let uuidString = "1915C92E-B61E-7E3E-AFEA-2B5F3EA2DCF0"
       let uuid = try #require(UUIDV7(uuidString: uuidString))
       let string = try await self.database.read { db in
-        try String.fetchOne(db, sql: "SELECT uuid7_to_text(?)", arguments: [uuid])!
+        try String.fetchOne(db, sql: "SELECT uuidv7_to_text(?)", arguments: [uuid])!
       }
       #expect(string == uuidString)
     }
@@ -133,7 +133,11 @@
     func convertsUUIDV7ToDate() async throws {
       let uuidDate = Date(staticISO8601: "2024-09-09T22:41:15+0000")
       let date = try await self.database.read { db in
-        return try Date.fetchOne(db, sql: "SELECT uuid7_to_date(?)", arguments: [UUIDV7(uuidDate)])!
+        return try Date.fetchOne(
+          db,
+          sql: "SELECT uuidv7_to_date(?)",
+          arguments: [UUIDV7(uuidDate)]
+        )!
       }
       #expect(date == uuidDate)
     }
@@ -144,7 +148,7 @@
       let timestamp = try await self.database.read { db in
         try TimeInterval.fetchOne(
           db,
-          sql: "SELECT uuid7_to_unixepoch(?)",
+          sql: "SELECT uuidv7_to_unixepoch(?)",
           arguments: [UUIDV7(uuidDate)]
         )!
       }

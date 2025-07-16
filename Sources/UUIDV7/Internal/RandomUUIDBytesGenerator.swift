@@ -47,7 +47,7 @@ extension RandomUUIDBytesGenerator {
     }
   #elseif os(WASI)
     private func readBytes() {
-      __wasi_random_get(self.cache, __wasi_size_t(MemoryLayout<uuid_t>.size * Self.cacheSize))
+      _ = __wasi_random_get(self.cache, __wasi_size_t(MemoryLayout<uuid_t>.size * Self.cacheSize))
     }
   #else
     private func readBytes() {
