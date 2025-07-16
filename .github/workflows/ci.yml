@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: "Test Swift Package on Linux"
-        run: swift test --configuration ${{ matrix.config }} --traits SwiftUUIDV7Tagged,SwiftUUIDV7StructuredQueries
+        run: swift test --configuration ${{ matrix.config }} --traits SwiftUUIDV7Tagged,SwiftUUIDV7StructuredQueries,SwiftUUIDV7Dependencies
 
   android:
     name: Android
@@ -48,7 +48,7 @@ jobs:
         uses: swift-android-sdk/swift-android-action@v2
         with:
           swift-version: 6.1
-          swift-build-flags: --traits SwiftUUIDV7Tagged,SwiftUUIDV7StructuredQueries
+          swift-build-flags: --traits SwiftUUIDV7Tagged,SwiftUUIDV7StructuredQueries,SwiftUUIDV7Dependencies
           swift-configuration: release
 
   windows:
@@ -65,7 +65,7 @@ jobs:
           branch: swift-6.1-release
           tag: 6.1-RELEASE
       - name: "Test Swift Package on Windows"
-        run: swift test --configuration ${{ matrix.config }} --traits SwiftUUIDV7Tagged
+        run: swift test --configuration ${{ matrix.config }} --traits SwiftUUIDV7Tagged,SwiftUUIDV7Dependencies
 
   wasm:
     name: WASM
@@ -76,4 +76,4 @@ jobs:
         with:
           tag: swift-6.1-RELEASE
       - name: Build
-        run: swift build --build-tests --swift-sdk wasm32-unknown-wasi
+        run: swift build --build-tests --swift-sdk wasm32-unknown-wasi --traits SwiftUUIDV7Tagged

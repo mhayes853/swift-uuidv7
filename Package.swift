@@ -19,13 +19,25 @@ let package = Package(
     ),
     .trait(
       name: "SwiftUUIDV7GRDB",
-      description: "Conforms UUIDV7 to GRDB's DatabaseValueConvertible protocol."
+      description: """
+        Conforms UUIDV7 to GRDB's DatabaseValueConvertible and StatementColumnConvertible \
+        protocols, and adds database functions to generate, parse, and extract data from UUIDV7s.
+        """
+    ),
+    .trait(
+      name: "SwiftUUIDV7Dependencies",
+      description:
+        """
+        Adds a dependency value to generate UUIDV7s, and interops the base UUID dependency with \
+        UUIDV7 generation.
+        """
     )
   ],
   dependencies: [
     .package(url: "https://github.com/groue/GRDB.swift", from: "7.5.0"),
     .package(url: "https://github.com/pointfreeco/swift-tagged", from: "0.10.0"),
-    .package(url: "https://github.com/pointfreeco/swift-structured-queries", from: "0.8.1")
+    .package(url: "https://github.com/pointfreeco/swift-structured-queries", from: "0.8.1"),
+    .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.9.2")
   ],
   targets: [
     .target(
@@ -45,6 +57,11 @@ let package = Package(
           name: "StructuredQueriesCore",
           package: "swift-structured-queries",
           condition: .when(traits: ["SwiftUUIDV7StructuredQueries"])
+        ),
+        .product(
+          name: "Dependencies",
+          package: "swift-dependencies",
+          condition: .when(traits: ["SwiftUUIDV7Dependencies"])
         )
       ]
     ),

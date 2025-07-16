@@ -35,19 +35,4 @@
       self.init(uuid)
     }
   }
-
-  // MARK: - App Intents
-
-  #if canImport(AppIntents)
-    @available(iOS 16, macOS 13, tvOS 16, watchOS 9, *)
-    extension Tagged: @retroactive EntityIdentifierConvertible where RawValue == UUIDV7 {
-      public var entityIdentifierString: String {
-        self.rawValue.entityIdentifierString
-      }
-
-      public static func entityIdentifier(for entityIdentifierString: String) -> Self? {
-        Self(uuidString: entityIdentifierString)
-      }
-    }
-  #endif
 #endif
