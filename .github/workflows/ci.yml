@@ -11,6 +11,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  benchmark:
+    name: UUIDV7 vs Foundation UUID (Throughput)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode ${{ matrix.xcode }}
+        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
+      - name: Run Benchmark
+        run: |
+          cd Benchmarks
+          swift package benchmark --target swift-uuidv7-benchmarks
+
   macos:
     name: macOS
     runs-on: macos-15

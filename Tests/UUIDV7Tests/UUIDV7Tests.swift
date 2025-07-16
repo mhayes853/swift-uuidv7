@@ -237,18 +237,4 @@ struct UUIDV7Tests {
       try JSONDecoder().decode(UUIDV7.self, from: Data())
     }
   }
-
-  @Test("Generation Speed")
-  @available(iOS 16, macOS 13, tvOS 16, watchOS 9, *)
-  func generationSpeed() {
-    let clock = ContinuousClock()
-    let time = clock.measure {
-      for _ in 0..<1_000_000 { _ = UUIDV7() }
-    }
-    print("Generated 1,000,000 UUIDV7s in \(time).")
-    let time2 = clock.measure {
-      for _ in 0..<1_000_000 { _ = UUID() }
-    }
-    print("Generated 1,000,000 UUIDV4s in \(time2).")
-  }
 }
