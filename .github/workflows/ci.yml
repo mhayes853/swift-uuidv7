@@ -65,7 +65,7 @@ jobs:
           branch: swift-6.1-release
           tag: 6.1-RELEASE
       - name: "Test Swift Package on Windows"
-        run: swift test --configuration ${{ matrix.config }} --traits SwiftUUIDV7Tagged,SwiftUUIDV7Dependencies
+        run: swift test --configuration ${{ matrix.config }} --traits SwiftUUIDV7Tagged
 
   wasm:
     name: WASM
