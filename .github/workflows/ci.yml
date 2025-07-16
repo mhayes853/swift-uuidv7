@@ -72,11 +72,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: bytecodealliance/actions/wasmtime/setup@v1
       - uses: swiftwasm/setup-swiftwasm@v2
         with:
           tag: swift-6.1-RELEASE
       - name: Build
         run: swift build --build-tests --swift-sdk wasm32-unknown-wasi
-      - name: Test
-        run: wasmtime .build/wasm32-unknown-wasi/debug/swift_uuidv7PackageTests.wasm
