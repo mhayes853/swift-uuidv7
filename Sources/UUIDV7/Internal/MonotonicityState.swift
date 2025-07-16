@@ -2,6 +2,7 @@ import Foundation
 
 // MARK: - MonotonicityState
 
+/// See https://www.rfc-editor.org/rfc/rfc9562.html#section-6.2-5.1
 struct MonotonicityState: Sendable {
   static let current = Lock(MonotonicityState())
 
