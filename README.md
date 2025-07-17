@@ -65,14 +65,14 @@ assert(id2 > id1) // No longer true 100% of the time.
 ## Library Integrations
 The library ships with UUID v7 support to popular libraries in the ecosystem, each behind a package trait.
 
-- [Tagged](https://github.com/pointfreeco/swift-tagged) (
+- [Tagged](https://github.com/pointfreeco/swift-tagged)
   - **Trait:** `SwiftUUIDV7Tagged`
   - Adds convenience initializers to `Tagged` that support `UUIDV7` generations.
-- [GRDB](https://github.com/groue/GRDB.swift) (
+- [GRDB](https://github.com/groue/GRDB.swift)
   - **Trait:** `SwiftUUIDV7GRDB`
   - Adds `DatabaseValueConvertible` and `StatementColumnConvertible` conformances to `UUIDV7`.
   - Adds `DatabaseFunction` instances for generating, parsing, and extracting properties from `UUIDV7`.
-- [StructuredQueries](https://github.com/pointfreeco/swift-structured-queries) (
+- [StructuredQueries](https://github.com/pointfreeco/swift-structured-queries)
   - **Trait:** `SwiftUUIDV7StructuredQueries`
   - Adds a `QueryBindable` conformance to `UUIDV7`.
   - Adds `UUIDV7.BytesRepresentation` and `UUIDV7.UppercaseRepresentation` column representations of `UUIDV7`.
