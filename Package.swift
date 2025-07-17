@@ -29,9 +29,9 @@ let package = Package(
       description: """
         Conforms UUIDV7 to IdentifierStringConvertible to make it compatible with CloudKit sync.
 
-        This trait also enables SwiftUUIDV7GRDB.
+        This trait also enables SwiftUUIDV7GRDB and SwiftUUIDV7StructuredQueries.
         """,
-      enabledTraits: ["SwiftUUIDV7GRDB"]
+      enabledTraits: ["SwiftUUIDV7GRDB", "SwiftUUIDV7StructuredQueries"]
     ),
     .trait(
       name: "SwiftUUIDV7Dependencies",

@@ -83,7 +83,7 @@ The library ships with UUID v7 support to popular libraries in the ecosystem, ea
 - [SharingGRDB](https://github.com/pointfreeco/sharing-grdb)
   - **Trait:** `SwiftUUIDV7SharingGRDB`
   - Conforms UUIDV7 to `IdentifierStringConvertible` to make it compatible with CloudKit sync.
-  - This trait also enables `SwiftUUIDV7GRDB`.
+  - This trait also enables `SwiftUUIDV7GRDB` and `SwiftUUIDV7StructuredQueries`.
 
 Additionally, `UUIDV7` conforms to `EntityIdentifierConvertible` from AppIntents, which is available without a need to specify a trait when building for Apple platforms.
 
