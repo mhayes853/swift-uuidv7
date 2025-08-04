@@ -1,5 +1,5 @@
 {
-  "originHash" : "16ec175bbd4c64cff562b0442952cc44bccf5dfb363f06925ac069106e672ad9",
+  "originHash" : "572d4620cd24abf93567eecddbb8dc638407f505ddb67575390dbc79cd27756e",
   "pins" : [
     {
       "identity" : "combine-schedulers",
@@ -20,12 +20,12 @@
       }
     },
     {
-      "identity" : "sharing-grdb-icloud",
+      "identity" : "sharing-grdb",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/pointfreeco/sharing-grdb-icloud",
+      "location" : "https://github.com/pointfreeco/sharing-grdb",
       "state" : {
         "branch" : "cloudkit",
-        "revision" : "05236f0c4c1238b0325e6c42828952191c874130"
+        "revision" : "939bf67ef1ad9b1879e073508712339f32e6b484"
       }
     },
     {
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections",
       "state" : {
-        "revision" : "c1805596154bb3a265fd91b8ac0c4433b4348fb0",
-        "version" : "1.2.0"
+        "revision" : "8c0c0a8b49e080e54e5e328cc552821ff07cd341",
+        "version" : "1.2.1"
       }
     },
     {
@@ -105,8 +105,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/swift-perception",
       "state" : {
-        "revision" : "d924c62a70fca5f43872f286dbd7cef0957f1c01",
-        "version" : "1.6.0"
+        "revision" : "3b98607b699d8dbfa627ddad312665a1b868af0c",
+        "version" : "2.0.2"
       }
     },
     {
@@ -114,8 +114,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/swift-sharing",
       "state" : {
-        "revision" : "75e846ee3159dc75b3a29bfc24b6ce5a557ddca9",
-        "version" : "2.5.2"
+        "revision" : "5d87dda90ed048f216826efbad404110141161bb",
+        "version" : "2.6.0"
       }
     },
     {
