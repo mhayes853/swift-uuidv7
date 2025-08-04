@@ -1,6 +1,8 @@
 # Swift UUIDV7
 
 [![CI](https://github.com/mhayes853/swift-uuidv7/actions/workflows/ci.yml/badge.svg)](https://github.com/mhayes853/swift-uuidv7/actions/workflows/ci.yml)
+[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fmhayes853%2Fswift-uuidv7%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/mhayes853/swift-uuidv7)
+[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fmhayes853%2Fswift-uuidv7%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/mhayes853/swift-uuidv7)
 
 An RFC 9562 compliant UUIDV7 data type with cross-platform support and support for popular libraries.
 
@@ -63,7 +65,7 @@ assert(id2 > id1) // No longer true 100% of the time.
 ```
 
 ## Library Integrations
-The library ships with UUID v7 support to popular libraries in the ecosystem, each behind a package trait.
+The library ships with UUID v7 support to popular libraries in the ecosystem, each behind a package trait. Package traits will only compile the dependency for their specific library when you enable them. You can learn more about package traits [here](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0450-swiftpm-package-traits.md).
 
 - [Tagged](https://github.com/pointfreeco/swift-tagged)
   - **Trait:** `SwiftUUIDV7Tagged`

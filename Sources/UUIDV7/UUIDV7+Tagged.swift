@@ -2,10 +2,6 @@
   import Tagged
   import Foundation
 
-  #if canImport(AppIntents)
-    import AppIntents
-  #endif
-
   // MARK: - UUIDV7 Tagged
 
   extension Tagged where RawValue == UUIDV7 {
