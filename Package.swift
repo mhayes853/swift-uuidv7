@@ -31,6 +31,10 @@ let package = Package(
         Adds a dependency value to generate UUIDV7s, and interops the base UUID dependency with \
         UUIDV7 generation.
         """
+    ),
+    .trait(
+      name: "SwiftUUIDV7Fluent",
+      description: "Adds a default initializer on @ID that allows you to use UUIDV7."
     )
   ],
   dependencies: [
@@ -38,7 +42,8 @@ let package = Package(
     .package(url: "https://github.com/pointfreeco/swift-tagged", from: "0.10.0"),
     .package(url: "https://github.com/pointfreeco/swift-structured-queries", from: "0.8.1"),
     .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.9.2"),
-    .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0")
+    .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"),
+    .package(url: "https://github.com/vapor/fluent-kit", from: "1.52.2")
   ],
   targets: [
     .target(
@@ -63,6 +68,11 @@ let package = Package(
           name: "Dependencies",
           package: "swift-dependencies",
           condition: .when(traits: ["SwiftUUIDV7Dependencies"])
+        ),
+        .product(
+          name: "FluentKit",
+          package: "fluent-kit",
+          condition: .when(traits: ["SwiftUUIDV7Fluent"])
         )
       ]
     ),

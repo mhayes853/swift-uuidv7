@@ -82,6 +82,9 @@ The library ships with UUID v7 support to popular libraries in the ecosystem, ea
   - **Trait:** `SwiftUUIDV7Dependencies`
   - Adds a `UUIDV7Generator` dependency.
   - Adds an initializer to `UUIDGenerator` that generates `UUIDV7` instances under the hood.
+- [Fluent](https://github.com/vapor/fluent-kit)
+  - **Trait:** `SwiftUUIDV7Fluent`
+  - Adds a default initializer on `@ID` that allows you to use `UUIDV7`.
 
 Additionally, `UUIDV7` conforms to `EntityIdentifierConvertible` from AppIntents, which is available without a need to specify a trait when building for Apple platforms.
 
