@@ -17,6 +17,34 @@
       )
     }
 
+    @Test(
+      "Bytes Representation From QueryBinding",
+      arguments: [
+        (
+          QueryBinding.blob([
+            25, 21, 201, 46, 182, 30, 126, 62, 175, 234, 43, 95, 62, 162, 220, 240
+          ]),
+          UUIDV7(uuid: (25, 21, 201, 46, 182, 30, 126, 62, 175, 234, 43, 95, 62, 162, 220, 240))
+        ),
+        (
+          QueryBinding.blob([
+            25, 21, 201, 46, 182, 30, 126, 62, 175, 234
+          ]),
+          nil
+        ),
+        (
+          QueryBinding.text("01990e14-53fe-7406-8bde-9bdc29d8d298"),
+          nil
+        )
+      ]
+    )
+    func bytesRepresentationFromQueryBinding(
+      binding: QueryBinding,
+      expected: UUIDV7?
+    ) throws {
+      #expect(UUIDV7.BytesRepresentation(queryBinding: binding).queryOutput == expected)
+    }
+
     @Test("Decodes From Valid UUID Bytes")
     func decodesFromValidUUIDBytes() throws {
       var decoder = TestQueryDecoder()
@@ -52,6 +80,28 @@
         UUIDV7.UppercaseRepresentation(queryOutput: uuid).queryBinding
           == .text("01980CBA-8171-71D3-B174-5E348CB790D6")
       )
+    }
+
+    @Test(
+      "Uppercase Representation From QueryBinding",
+      arguments: [
+        (
+          QueryBinding.blob([
+            25, 21, 201, 46, 182, 30, 126, 62, 175, 234, 43, 95, 62, 162, 220, 240
+          ]),
+          nil
+        ),
+        (
+          QueryBinding.text("01990E14-53FE-7406-8BDE-9BDC29D8D298"),
+          UUIDV7(uuidString: "01990E14-53FE-7406-8BDE-9BDC29D8D298")
+        )
+      ]
+    )
+    func uppercaseRepresentationFromQueryBinding(
+      binding: QueryBinding,
+      expected: UUIDV7?
+    ) throws {
+      #expect(UUIDV7.UppercaseRepresentation(queryBinding: binding).queryOutput == expected)
     }
 
     @Test("Decodes From Valid UUID String")
