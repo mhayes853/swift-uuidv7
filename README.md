@@ -65,7 +65,7 @@ assert(id2 > id1) // No longer true 100% of the time.
 ```
 
 ## Library Integrations
-The library ships with UUID v7 support to popular libraries in the ecosystem, each behind a package trait. Package traits will only compile the dependency for their specific library when you enable them. You can learn more about package traits [here](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0450-swiftpm-package-traits.md).
+The library ships with UUID v7 support to popular libraries in the ecosystem, each behind a package trait. Package traits will only compile the dependency for their specific library when you enable them. You can learn more about package traits [here](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0450-swiftpm-package-traits.md) or the philosohpy for how they were used in this library [here](https://whypeople.xyz/on-package-traits).
 
 - [Tagged](https://github.com/pointfreeco/swift-tagged)
   - **Trait:** `SwiftUUIDV7Tagged`
@@ -93,6 +93,8 @@ Additionally, `UUIDV7` conforms to `EntityIdentifierConvertible` from AppIntents
 You can add Swift UUIDV7 to an Xcode project by adding it to your project as a package.
 
 > [https://github.com/mhayes853/swift-uuidv7](https://github.com/mhayes853/swift-uuidv7)
+
+> ⚠️ At of the time of writing this, Xcode 26 (Beta 5) does not seem to include a UI for enabling traits on swift packages through the `Files > Add Package Dependencies` menu. If you want to enable traits, you will have to install the library inside a local swift package that lives outside your Xcode project.
 
 If you want to use Swift UUIDV7 in a [SwiftPM](https://swift.org/package-manager/) project, it’s as simple as adding it to your `Package.swift`:
 
