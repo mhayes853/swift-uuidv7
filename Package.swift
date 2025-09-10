@@ -47,7 +47,7 @@ let package = Package(
     .package(url: "https://github.com/pointfreeco/swift-tagged", from: "0.10.0"),
     .package(
       url: "https://github.com/pointfreeco/swift-structured-queries",
-      from: "0.18.0",
+      from: "0.19.0",
       traits: [
         .trait(name: "StructuredQueriesTagged", condition: .when(traits: ["SwiftUUIDV7Tagged"]))
       ]
