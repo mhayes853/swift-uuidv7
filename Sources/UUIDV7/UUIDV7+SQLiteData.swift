@@ -1,5 +1,5 @@
-#if SwiftUUIDV7SharingGRDB
-  import SharingGRDBCore
+#if SwiftUUIDV7SQLiteData
+  import SQLiteData
 
   extension UUIDV7: IdentifierStringConvertible {
     public var rawIdentifier: String { self.uuidString }

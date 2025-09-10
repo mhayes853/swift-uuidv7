@@ -1,5 +1,5 @@
 {
-  "originHash" : "66ac3d1f938ab12243079f7e589e9eb5b3741dc7a9df972d379e85ccd0aea229",
+  "originHash" : "17bf500590ee0b4efff2fe91923d1832aeb98e554aa8079db8beaad9164999b7",
   "pins" : [
     {
       "identity" : "combine-schedulers",
@@ -25,7 +25,7 @@
       "location" : "https://github.com/pointfreeco/sharing-grdb",
       "state" : {
         "branch" : "cloudkit",
-        "revision" : "543684b23b01c26b421d7d518e645edcfdcce1e6"
+        "revision" : "85574a176c83abebe20339056ca351f48c2bc555"
       }
     },
     {
@@ -105,8 +105,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/swift-perception",
       "state" : {
-        "revision" : "59b00dfa5548b5b91ebbda6d94d6328d82ca00fe",
-        "version" : "2.0.6"
+        "revision" : "52bc59a5c7c3f0420c6c31d643d55d64b3f8c013",
+        "version" : "2.0.7"
       }
     },
     {
@@ -132,8 +132,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/swift-structured-queries",
       "state" : {
-        "revision" : "49f18c24145a6e061cc581662f468b7c18523b8d",
-        "version" : "0.18.0"
+        "revision" : "1b653aba57486afef66d8aafdbe83246249118fd",
+        "version" : "0.19.0"
       }
     },
     {

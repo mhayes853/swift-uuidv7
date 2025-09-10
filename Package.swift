@@ -25,7 +25,7 @@ let package = Package(
         """
     ),
     .trait(
-      name: "SwiftUUIDV7SharingGRDB",
+      name: "SwiftUUIDV7SQLiteData",
       description: """
         Conforms UUIDV7 to IdentifierStringConvertible to make it compatible with CloudKit sync.
 
@@ -47,14 +47,18 @@ let package = Package(
     .package(url: "https://github.com/pointfreeco/swift-tagged", from: "0.10.0"),
     .package(
       url: "https://github.com/pointfreeco/swift-structured-queries",
-      from: "0.16.0",
+      from: "0.18.0",
       traits: [
         .trait(name: "StructuredQueriesTagged", condition: .when(traits: ["SwiftUUIDV7Tagged"]))
       ]
     ),
     .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.9.2"),
     .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"),
-    .package(url: "https://github.com/pointfreeco/sharing-grdb", branch: "cloudkit")
+    .package(
+      url: "https://github.com/pointfreeco/sharing-grdb",
+      branch: "cloudkit",
+      traits: [.trait(name: "SQLiteDataTagged", condition: .when(traits: ["SwiftUUIDV7Tagged"]))]
+    )
   ],
   targets: [
     .target(
@@ -86,9 +90,9 @@ let package = Package(
           condition: .when(traits: ["SwiftUUIDV7Dependencies"])
         ),
         .product(
-          name: "SharingGRDBCore",
+          name: "SQLiteData",
           package: "sharing-grdb",
-          condition: .when(traits: ["SwiftUUIDV7SharingGRDB"])
+          condition: .when(traits: ["SwiftUUIDV7SQLiteData"])
         )
       ]
     ),

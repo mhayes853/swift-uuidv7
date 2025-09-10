@@ -82,8 +82,8 @@ The library ships with UUID v7 support to popular libraries in the ecosystem, ea
   - **Trait:** `SwiftUUIDV7Dependencies`
   - Adds a `UUIDV7Generator` dependency.
   - Adds an initializer to `UUIDGenerator` that generates `UUIDV7` instances under the hood.
-- [SharingGRDB](https://github.com/pointfreeco/sharing-grdb)
-  - **Trait:** `SwiftUUIDV7SharingGRDB`
+- [SQLiteData](https://github.com/pointfreeco/sharing-grdb)
+  - **Trait:** `SwiftUUIDV7SQLiteData`
   - Conforms UUIDV7 to `IdentifierStringConvertible` to make it compatible with CloudKit sync.
   - This trait also enables `SwiftUUIDV7GRDB` and `SwiftUUIDV7StructuredQueries`.
 
