@@ -25,6 +25,15 @@ let package = Package(
         """
     ),
     .trait(
+      name: "SwiftUUIDV7SQLiteData",
+      description: """
+        Conforms UUIDV7 to IdentifierStringConvertible to make it compatible with CloudKit sync.
+
+        This trait also enables SwiftUUIDV7GRDB and SwiftUUIDV7StructuredQueries.
+        """,
+      enabledTraits: ["SwiftUUIDV7GRDB", "SwiftUUIDV7StructuredQueries"]
+    ),
+    .trait(
       name: "SwiftUUIDV7Dependencies",
       description:
         """
@@ -36,9 +45,20 @@ let package = Package(
   dependencies: [
     .package(url: "https://github.com/groue/GRDB.swift", from: "7.5.0"),
     .package(url: "https://github.com/pointfreeco/swift-tagged", from: "0.10.0"),
-    .package(url: "https://github.com/pointfreeco/swift-structured-queries", from: "0.16.0"),
+    .package(
+      url: "https://github.com/pointfreeco/swift-structured-queries",
+      from: "0.19.0",
+      traits: [
+        .trait(name: "StructuredQueriesTagged", condition: .when(traits: ["SwiftUUIDV7Tagged"]))
+      ]
+    ),
     .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.9.2"),
-    .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0")
+    .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"),
+    .package(
+      url: "https://github.com/pointfreeco/sqlite-data",
+      from: "1.0.0",
+      traits: [.trait(name: "SQLiteDataTagged", condition: .when(traits: ["SwiftUUIDV7Tagged"]))]
+    )
   ],
   targets: [
     .target(
@@ -60,9 +80,19 @@ let package = Package(
           condition: .when(traits: ["SwiftUUIDV7StructuredQueries"])
         ),
         .product(
+          name: "StructuredQueriesSQLiteCore",
+          package: "swift-structured-queries",
+          condition: .when(traits: ["SwiftUUIDV7StructuredQueries"])
+        ),
+        .product(
           name: "Dependencies",
           package: "swift-dependencies",
           condition: .when(traits: ["SwiftUUIDV7Dependencies"])
+        ),
+        .product(
+          name: "SQLiteData",
+          package: "sqlite-data",
+          condition: .when(traits: ["SwiftUUIDV7SQLiteData"])
         )
       ]
     ),

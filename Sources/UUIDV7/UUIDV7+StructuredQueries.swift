@@ -1,6 +1,7 @@
 #if SwiftUUIDV7StructuredQueries
   import Foundation
   import StructuredQueriesCore
+  import StructuredQueriesSQLiteCore
 
   // MARK: - QueryBindable
 
@@ -40,7 +41,7 @@
     }
 
     public init?(queryBinding: QueryBinding) {
-      guard case let .blob(data) = queryBinding else { return nil }
+      guard case .blob(let data) = queryBinding else { return nil }
       guard data.count == 16 else { return nil }
       let output = data.withUnsafeBytes { UUIDV7(uuid: $0.load(as: uuid_t.self)) }
       guard let output else { return nil }
@@ -100,7 +101,7 @@
     }
 
     public init?(queryBinding: QueryBinding) {
-      guard case let .text(uuidString) = queryBinding else { return nil }
+      guard case .text(let uuidString) = queryBinding else { return nil }
       guard let uuid = UUIDV7(uuidString: uuidString) else { return nil }
       self.init(queryOutput: uuid)
     }
