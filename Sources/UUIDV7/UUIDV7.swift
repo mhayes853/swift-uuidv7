@@ -131,6 +131,7 @@ extension UUIDV7 {
   }
 
   private init(_ timeInterval: TimeInterval, _ bytes: inout uuid_t) {
+    precondition(timeInterval >= 0, _negativeTimeStampMessage(timeInterval))
     self.init(UInt64(timeInterval * 1000), &bytes)
   }
 
@@ -149,6 +150,11 @@ extension UUIDV7 {
     bytes.8 = (bytes.8 & 0x3F) | 0x80
     self.rawValue = UUID(uuid: bytes)
   }
+}
+
+package func _negativeTimeStampMessage(_ timeInterval: TimeInterval) -> String {
+  let date = Date(timeIntervalSince1970: timeInterval)
+  return "Cannot create a UUIDV7 with a timestamp before January 1, 1970. (Received: \(date))"
 }
 
 // MARK: - Now
