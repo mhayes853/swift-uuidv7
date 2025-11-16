@@ -96,7 +96,16 @@ let package = Package(
         )
       ]
     ),
-    .testTarget(name: "UUIDV7Tests", dependencies: ["UUIDV7"])
+    .testTarget(
+      name: "UUIDV7Tests",
+      dependencies: ["UUIDV7"],
+      swiftSettings: [
+        .define(
+          "SWIFT_UUIDV7_EXIT_TESTABLE_PLATFORM",
+          .when(platforms: [.macOS, .linux, .windows])
+        )
+      ]
+    )
   ],
   swiftLanguageModes: [.v6]
 )

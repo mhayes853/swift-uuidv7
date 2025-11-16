@@ -115,6 +115,15 @@ struct UUIDV7Tests {
     #expect(uuid == UUIDV7(uuidString: uuidString))
   }
 
+  #if SWIFT_UUIDV7_EXIT_TESTABLE_PLATFORM && swift(>=6.2)
+    @Test("Exits When Negative Timestamp Used")
+    func exitNegativeTimestamp() async throws {
+      await #expect(processExitsWith: .failure, "\(_negativeTimeStampMessage(-1000))") {
+        _ = UUIDV7(timeIntervalSince1970: -1000)
+      }
+    }
+  #endif
+
   @Test(
     "Stores Date",
     arguments: [
