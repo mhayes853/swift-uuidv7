@@ -39,7 +39,7 @@
       argumentCount: 1,
       pure: true
     ) { args in
-      TimeInterval.fromDatabaseValue(args[0]).map(UUIDV7.init(timeIntervalSince1970:))
+      TimeInterval.fromDatabaseValue(args[0]).map { UUIDV7(timeIntervalSince1970: $0) }
     }
 
     /// A SQL function that converts a ``UUIDV7`` to a date.
