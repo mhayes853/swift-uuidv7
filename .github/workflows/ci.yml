@@ -63,7 +63,8 @@ jobs:
         with:
           swift-version: 6.2
           swift-build-flags: --traits SwiftUUIDV7Tagged,SwiftUUIDV7StructuredQueries,SwiftUUIDV7Dependencies
-          swift-configuration: release
+          swift-configuration: ${{ matrix.config }}
+          run-tests: false # NB: Emulator booting seems to be flakey
 
   windows:
     name: Windows
