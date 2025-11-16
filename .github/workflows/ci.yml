@@ -84,6 +84,7 @@ jobs:
   wasm:
     name: WASM
     runs-on: ubuntu-latest
+    container: swift:6.1.3
     steps:
       - uses: actions/checkout@v4
       - uses: swiftwasm/setup-swiftwasm@v2
