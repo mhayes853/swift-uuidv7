@@ -216,7 +216,7 @@ extension UUIDV7 {
     /// The Foundation UUID must be compliant with RFC 9562 UUID Version 7.
     ///
     /// - Parameter uuid: A Foundation UUID.
-    public init?(_ uuid: UUID) {
+    public init?(_ uuid: Foundation.UUID) {
       self.init(rawValue: uuid)
     }
   }
@@ -323,11 +323,11 @@ extension UUIDV7: Sendable {}
 #if canImport(Foundation)
   extension UUIDV7: RawRepresentable {
     /// This UUID as a Foundation UUID.
-    public var rawValue: UUID {
+    public var rawValue: Foundation.UUID {
       UUID(uuid: self.uuid)
     }
 
-    public init?(rawValue: UUID) {
+    public init?(rawValue: Foundation.UUID) {
       self.init(uuid: rawValue.uuid)
     }
   }
