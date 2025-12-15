@@ -43,7 +43,7 @@
     public init?(queryBinding: QueryBinding) {
       guard case .blob(let data) = queryBinding else { return nil }
       guard data.count == 16 else { return nil }
-      let output = data.withUnsafeBytes { UUIDV7(uuid: $0.load(as: uuid_t.self)) }
+      let output = data.withUnsafeBytes { UUIDV7(uuid: $0.load(as: UUIDBytes.self)) }
       guard let output else { return nil }
       self.init(queryOutput: output)
     }
@@ -53,7 +53,7 @@
     public init(decoder: inout some QueryDecoder) throws {
       let queryOutput = try [UInt8](decoder: &decoder)
       guard queryOutput.count == 16 else { throw InvalidBytes() }
-      let output = queryOutput.withUnsafeBytes { UUIDV7(uuid: $0.load(as: uuid_t.self)) }
+      let output = queryOutput.withUnsafeBytes { UUIDV7(uuid: $0.load(as: UUIDBytes.self)) }
       guard let output else { throw InvalidBytes() }
       self.init(queryOutput: output)
     }

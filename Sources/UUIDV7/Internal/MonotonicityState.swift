@@ -1,4 +1,6 @@
-import Foundation
+#if canImport(Foundation)
+  import Foundation
+#endif
 
 // MARK: - MonotonicityState
 
