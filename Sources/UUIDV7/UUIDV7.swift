@@ -29,7 +29,9 @@ public struct UUIDV7 {
   ///
   /// - Parameter bytes: The bytes to use for the UUID.
   public init?(uuid: UUIDBytes) {
-    guard Self.isVersion7(uuid), Self.isRFC9562Variant(uuid) else { return nil }
+    let isRFC9562Variant = UUIDVariant(uuid: uuid) == .rfc9562
+    let isVersion7 = uuid.6 >> 4 == 0x7
+    guard isVersion7 && isRFC9562Variant else { return nil }
     self.uuid = uuid
   }
 }
@@ -334,14 +336,6 @@ extension UUIDV7: Sendable {}
 // MARK: - Private Helpers
 
 extension UUIDV7 {
-  private static func isVersion7(_ bytes: UUIDBytes) -> Bool {
-    bytes.6 >> 4 == 0x7
-  }
-
-  private static func isRFC9562Variant(_ bytes: UUIDBytes) -> Bool {
-    bytes.8 & 0xC0 == 0x80
-  }
-
   private static func platformTimeIntervalSince1970() -> TimeInterval {
     #if canImport(Foundation)
       Date().timeIntervalSince1970

@@ -25,38 +25,12 @@
     }
   }
 
-  // MARK: - Variant
-
-  /// A variant of UUID as defined by RFC 9562.
-  public enum UUIDVariant: Hashable, Sendable {
-    /// Reserved by the NCS for backward compatibility.
-    case ncs
-
-    /// The default variant as defined by RFC 9562.
-    case rfc9562
-
-    /// Reserved by Microsoft for backward compatibility.
-    case microsoft
-
-    /// Reserved for future use.
-    case future
-  }
+  // MARK: - Varian
 
   extension UUID {
     /// The variant of this UUID as defined by RFC 9562.
     public var variant: UUIDVariant {
-      let x = self.uuid.8
-      if x & 0x80 == 0x00 {
-        return .ncs
-      } else if x & 0xC0 == 0x80 {
-        return .rfc9562
-      } else if x & 0xE0 == 0xC0 {
-        return .microsoft
-      } else if x & 0xE0 == 0xE0 {
-        return .future
-      } else {
-        return .future
-      }
+      UUIDVariant(uuid: self.uuid)
     }
   }
 #endif
