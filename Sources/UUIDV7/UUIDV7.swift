@@ -245,7 +245,7 @@ extension UUIDV7 {
 
 #if canImport(Foundation)
   extension UUIDV7 {
-    public subscript<Value>(dynamicMember keyPath: KeyPath<UUID, Value>) -> Value {
+    public subscript<Value>(dynamicMember keyPath: KeyPath<Foundation.UUID, Value>) -> Value {
       self.rawValue[keyPath: keyPath]
     }
   }
