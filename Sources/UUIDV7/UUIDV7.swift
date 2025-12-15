@@ -262,7 +262,15 @@ extension UUIDV7: Decodable {
   public init(from decoder: any Decoder) throws {
     let container = try decoder.singleValueContainer()
     let uuidString = try container.decode(String.self)
-    guard let uuid = Self(uuidString: uuidString) else {
+    guard let bytes = Self.uuidBytes(from: uuidString) else {
+      throw DecodingError.dataCorrupted(
+        DecodingError.Context(
+          codingPath: decoder.codingPath,
+          debugDescription: "Attempted to decode UUID from invalid UUID string."
+        )
+      )
+    }
+    guard let uuid = Self(uuid: bytes) else {
       throw DecodingError.dataCorrupted(
         DecodingError.Context(
           codingPath: decoder.codingPath,
