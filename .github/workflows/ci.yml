@@ -85,11 +85,11 @@ jobs:
   wasm:
     name: WASM
     runs-on: ubuntu-latest
-    container: swift:6.1.3
+    container: swift:6.2.0
     steps:
       - uses: actions/checkout@v4
       - uses: swiftwasm/setup-swiftwasm@v2
         with:
-          tag: swift-6.1-RELEASE
+          tag: swift-6.2-RELEASE
       - name: Build
-        run: swift build --build-tests --swift-sdk wasm32-unknown-wasi --traits SwiftUUIDV7Tagged
+        run: swift build --build-tests --swift-sdk wasm32-unknown-wasip1
