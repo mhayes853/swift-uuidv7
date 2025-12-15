@@ -305,9 +305,9 @@ extension UUIDV7: CustomReflectable {
 
 extension UUIDV7: Comparable {
   public static func < (lhs: UUIDV7, rhs: UUIDV7) -> Bool {
-    withUnsafeBytes(of: lhs.uuid) { lhsPtr in
-      withUnsafeBytes(of: rhs.uuid) { rhsPtr in
-        memcmp(lhsPtr.baseAddress, rhsPtr.baseAddress, MemoryLayout<UUIDBytes>.size) < 0
+    withUnsafePointer(to: lhs) { lhs in
+      withUnsafePointer(to: rhs) { rhs in
+        memcmp(lhs, rhs, MemoryLayout<UUIDV7>.size) < 0
       }
     }
   }
