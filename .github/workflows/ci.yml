@@ -91,5 +91,6 @@ jobs:
       - uses: swiftwasm/setup-swiftwasm@v2
         with:
           tag: swift-6.2-RELEASE
+          target: wasm32-unknown-wasip1
       - name: Build
         run: swift build --build-tests --swift-sdk wasm32-unknown-wasip1
