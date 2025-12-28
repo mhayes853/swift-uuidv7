@@ -25,7 +25,7 @@
     /// Creates a tagged ``UUIDV7`` from a string representation.
     ///
     /// - Parameter string: The string representation of a UUIDV7, such as
-    ///   `01980c7f-b814-717d-b320-c7bc7b2d0c75`.
+    ///   `01980c7f-b814-717d-b320-c7bc7b2d0c75` or `01980C7F-B814-717D-B320-C7BC7B2D0C75`.
     public init?(uuidString string: String) {
       guard let uuid = UUIDV7(uuidString: string) else { return nil }
       self.init(uuid)

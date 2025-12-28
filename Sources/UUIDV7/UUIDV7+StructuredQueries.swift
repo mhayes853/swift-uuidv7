@@ -70,7 +70,7 @@
   // MARK: - UppercaseRepresentation
 
   extension UUIDV7 {
-    /// A query expression representing a ``UUIDV7`` as a lowercased string.
+    /// A query expression representing a ``UUIDV7`` as an uppercased string.
     ///
     /// ```swift
     /// @Table

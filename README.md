@@ -13,10 +13,10 @@ import Foundation
 let id = UUIDV7()
 let id2 = UUID()
 
-// 0198143f-f09c-772d-a29a-42b1ca62e784
+// 0198143F-F09C-772D-A29A-42B1CA62E784
 print(id.uuidString)
 
-// d486cf16-e095-4ad0-a871-492623cd654c
+// D486CF16-E095-4AD0-A871-492623CD654C
 print(id2.uuidString)
 ```
 

@@ -119,9 +119,9 @@
       #expect(uuid == nil)
     }
 
-    @Test("Converts UUIDV7 To String")
-    func convertsUUIDV7ToString() async throws {
-      let uuidString = "1915C92E-B61E-7E3E-AFEA-2B5F3EA2DCF0"
+    @Test("Converts UUIDV7 To Lowercased String")
+    func convertsUUIDV7ToLowercasedString() async throws {
+      let uuidString = "1915c92e-b61e-7e3e-afea-2b5f3ea2dcf0"
       let uuid = try #require(UUIDV7(uuidString: uuidString))
       let string = try await self.database.read { db in
         try String.fetchOne(db, sql: "SELECT uuidv7_to_text(?)", arguments: [uuid])!
