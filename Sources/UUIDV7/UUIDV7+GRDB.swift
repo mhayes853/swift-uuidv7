@@ -51,13 +51,13 @@
       UUIDV7.fromDatabaseValue(args[0])?.date
     }
 
-    /// A SQL function that converts a ``UUIDV7`` to a UUID string.
+    /// A SQL function that converts a ``UUIDV7`` to a lowercased UUID string.
     public static let uuidv7ToText = DatabaseFunction(
       "uuidv7_to_text",
       argumentCount: 1,
       pure: true
     ) { args in
-      UUIDV7.fromDatabaseValue(args[0])?.uuidString
+      UUIDV7.fromDatabaseValue(args[0])?.uuidString.lowercased()
     }
 
     /// A SQL function that converts a ``UUIDV7`` to a numeric unix epoch.
@@ -81,7 +81,7 @@
     /// - `uuidv7_from_text`: Parses a random ``UUIDV7`` from a UUID string.
     /// - `uuidv7_from_unixepoch`: Parses a random ``UUIDV7`` from a numerical unix epoch.
     /// - `uuidv7_to_date`: Converts a ``UUIDV7`` to a date.
-    /// - `uuidv7_to_text`: Converts a ``UUIDV7`` to a UUID string.
+    /// - `uuidv7_to_text`: Converts a ``UUIDV7`` to a lowercased UUID string.
     /// - `uuidv7_to_unixepoch`: Converts a ``UUIDV7`` to a numeric unix epoch.
     public func addUUIDV7Functions() {
       self.add(function: .uuidv7)
