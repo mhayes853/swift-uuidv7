@@ -1,36 +1,38 @@
-#if canImport(Foundation)
-  import Foundation
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
+import Foundation
+#endif
 
-  // MARK: - Constants
+// MARK: - Constants
 
-  extension UUID {
+extension UUID {
     /// A nil UUID defined by RFC 9562.
     public static let `nil` = Self(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
 
     /// A max UUID defined by RFC 9562.
     public static let max = Self(
-      uuid: (
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
-      )
+        uuid: (
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+        )
     )
-  }
+}
 
-  // MARK: - Version
+// MARK: - Version
 
-  extension UUID {
+extension UUID {
     /// The version number of this UUID as defined by RFC 9562.
     public var version: Int {
-      Int(self.uuid.6 >> 4)
+        Int(self.uuid.6 >> 4)
     }
-  }
+}
 
-  // MARK: - Varian
+// MARK: - Varian
 
-  extension UUID {
+extension UUID {
     /// The variant of this UUID as defined by RFC 9562.
     public var variant: UUIDVariant {
-      UUIDVariant(uuid: self.uuid)
+        UUIDVariant(uuid: self.uuid)
     }
-  }
-#endif
+}
