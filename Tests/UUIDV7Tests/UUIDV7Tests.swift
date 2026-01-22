@@ -127,6 +127,29 @@ struct UUIDV7Tests {
         #expect(uuid.timestamp == date)
     }
 
+    @Test("Stores Date with specified bytes")
+    func dateWithBytes() async throws {
+        let date = Date(staticISO8601: "2024-09-09T22:37:05+0000")
+        let bytes: uuid_t = (0, 0, 0, 0, 0, 0, 0, 0, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11)
+        let uuid = UUIDV7(timestamp: date, bytes: bytes)
+        
+        // Timestamp should be preserved
+        #expect(uuid.timestamp == date)
+        
+        // Random bytes (from 8th byte onwards) should be preserved (except variant bits in 8th byte)
+        #expect(uuid.uuid.8 == (0xAA & 0x3F) | 0x80)
+        #expect(uuid.uuid.9 == 0xBB)
+        #expect(uuid.uuid.10 == 0xCC)
+        #expect(uuid.uuid.11 == 0xDD)
+        #expect(uuid.uuid.12 == 0xEE)
+        #expect(uuid.uuid.13 == 0xFF)
+        #expect(uuid.uuid.14 == 0x00)
+        #expect(uuid.uuid.15 == 0x11)
+        
+        // Version should be 7
+        #expect(uuid.uuid.6 >> 4 == 0x7)
+    }
+
     @Test("2 Random Instances are Not Equal")
     func randomNotEqual() async throws {
         for _ in 0..<10_000 {

@@ -19,7 +19,7 @@ import Foundation
 #endif
 
 public struct UUIDV7 {
-    /// The raw ``UUIDBytes`` of this UUID.
+    /// The raw bytes of this UUID.
     public let uuid: uuid_t
 
     /// Creates a UUID from the specified bytes.
@@ -101,11 +101,13 @@ extension UUIDV7 {
     /// This initializer does not implement sub-millisecond monotonicity, use ``init()`` instead if
     /// sub-millisecond monotonicity is needed.
     ///
-    /// - Parameter timeInterval: The `TimeInterval` since 00:00:00 UTC on 1 January 1970.
+    /// - Parameters:
+    ///   - timeInterval: The `TimeInterval` since 00:00:00 UTC on 1 January 1970.
+    ///   - bytes: The bytes to use for the UUID. The timestamp and version will be overwritten.
     @inlinable
     public init(timeIntervalSince1970 timeInterval: TimeInterval, bytes: uuid_t = UUID().uuid) {
         precondition(timeInterval >= 0, _negativeTimeStampMessage(timeInterval))
-        self.init(UInt64(timeInterval * 1000), UUID().uuid)
+        self.init(UInt64(timeInterval * 1000), bytes)
     }
 
     @usableFromInline
@@ -135,7 +137,9 @@ extension UUIDV7 {
     /// This initializer does not implement sub-millisecond monotonicity, use ``init()`` instead if
     /// sub-millisecond monotonicity is needed.
     ///
-    /// - Parameter date: The `Date` to embed in this UUID.
+    /// - Parameters:
+    ///   - timestamp: The `Date` to embed in this UUID.
+    ///   - bytes: The bytes to use for the UUID. The timestamp and version will be overwritten.
     @inlinable
     public init(timestamp: Date, bytes: uuid_t = UUID().uuid) {
         self.init(timeIntervalSince1970: timestamp.timeIntervalSince1970, bytes: bytes)
