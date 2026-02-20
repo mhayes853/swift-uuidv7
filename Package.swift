@@ -98,7 +98,13 @@ let package = Package(
     ),
     .testTarget(
       name: "UUIDV7Tests",
-      dependencies: ["UUIDV7"],
+      dependencies: [
+        "UUIDV7",
+        .product(
+          name: "DependenciesTestSupport",
+          package: "swift-dependencies"
+        )
+      ],
       swiftSettings: [
         .define(
           "SWIFT_UUIDV7_EXIT_TESTABLE_PLATFORM",
