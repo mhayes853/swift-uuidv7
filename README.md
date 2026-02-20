@@ -102,7 +102,7 @@ If you want to use Swift UUIDV7 in a [SwiftPM](https://swift.org/package-manager
 dependencies: [
   .package(
     url: "https://github.com/mhayes853/swift-uuidv7",
-    from: "0.4.0",
+    from: "0.5.0",
     // You can omit the traits if you don't need any of them.
     traits: ["SwiftUUIDV7GRDB"]
   ),
