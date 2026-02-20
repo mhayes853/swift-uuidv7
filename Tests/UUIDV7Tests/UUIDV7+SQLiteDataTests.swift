@@ -22,10 +22,10 @@
 
       let (uuid1, uuid2) = try await database.read { db in
         let uuid1 = try #require(
-          UUIDV7(uuidString: DummyRow.select { _ in SQLiteUUIDV7.toText(SQLiteUUIDV7.uuidv7()) }.fetchOne(db)!)
+          UUIDV7(uuidString: DummyRow.select { _ in SQLiteUUIDV7.uuidv7().toText() }.fetchOne(db)!)
         )
         let uuid2 = try #require(
-          UUIDV7(uuidString: DummyRow.select { _ in SQLiteUUIDV7.toText(SQLiteUUIDV7.uuidv7()) }.fetchOne(db)!)
+          UUIDV7(uuidString: DummyRow.select { _ in SQLiteUUIDV7.uuidv7().toText() }.fetchOne(db)!)
         )
         return (uuid1, uuid2)
       }
@@ -40,7 +40,7 @@
       let uuid = try await database.read { db in
         try #require(
           UUIDV7(
-            uuidString: DummyRow.select { _ in SQLiteUUIDV7.toText(SQLiteUUIDV7.fromDate(date)) }.fetchOne(db)!
+            uuidString: DummyRow.select { _ in SQLiteUUIDV7.fromDate(date).toText() }.fetchOne(db)!
           )
         )
       }
@@ -56,7 +56,7 @@
         try #require(
           UUIDV7(
             uuidString: DummyRow
-              .select { _ in SQLiteUUIDV7.toText(SQLiteUUIDV7.fromUnixEpoch(date.timeIntervalSince1970)) }
+              .select { _ in SQLiteUUIDV7.fromUnixEpoch(date.timeIntervalSince1970).toText() }
               .fetchOne(db)!
           )
         )
@@ -73,7 +73,7 @@
         try #require(
           UUIDV7(
             uuidString: DummyRow
-              .select { _ in SQLiteUUIDV7.toText(SQLiteUUIDV7.fromUnixEpoch(Double(Int(date.timeIntervalSince1970)))) }
+              .select { _ in SQLiteUUIDV7.fromUnixEpoch(Double(Int(date.timeIntervalSince1970))).toText() }
               .fetchOne(db)!
           )
         )
@@ -89,7 +89,7 @@
       let uuid = try await database.read { db in
         try #require(
           UUIDV7(
-            uuidString: DummyRow.select { _ in SQLiteUUIDV7.toText(SQLiteUUIDV7.fromUnixEpoch(date.timeIntervalSince1970)) }
+            uuidString: DummyRow.select { _ in SQLiteUUIDV7.fromUnixEpoch(date.timeIntervalSince1970).toText() }
               .fetchOne(db)!
           )
         )
@@ -106,7 +106,7 @@
         try #require(
           UUIDV7(
             uuidString: DummyRow
-              .select { _ in SQLiteUUIDV7.toText(SQLiteUUIDV7.fromUnixEpoch(Double(Int(date.timeIntervalSince1970)))) }
+              .select { _ in SQLiteUUIDV7.fromUnixEpoch(Double(Int(date.timeIntervalSince1970))).toText() }
               .fetchOne(db)!
           )
         )
@@ -127,7 +127,7 @@
         try #require(
           UUIDV7(
             uuidString: DummyRow.select { _ in
-              SQLiteUUIDV7.toText(SQLiteUUIDV7.fromDate(date))
+              SQLiteUUIDV7.fromDate(date).toText()
             }.fetchOne(db)!
           )
         )
@@ -144,7 +144,7 @@
         try #require(
           UUIDV7(
             uuidString: DummyRow.select { _ in
-              SQLiteUUIDV7.toText(SQLiteUUIDV7.fromText(string))
+              SQLiteUUIDV7.fromText(string).toText()
             }.fetchOne(db)!
           )
         )
@@ -186,7 +186,7 @@
       let uuidString = "1915c92e-b61e-7e3e-afea-2b5f3ea2dcf0"
       let uuid = try #require(UUIDV7(uuidString: uuidString))
       let string = try await database.read { db in
-        try DummyRow.select { _ in SQLiteUUIDV7.toText(uuid) }.fetchOne(db)!
+        try DummyRow.select { _ in uuid.toText() }.fetchOne(db)!
       }
       #expect(string == uuidString)
     }
@@ -197,7 +197,7 @@
 
       let uuidDate = Date(staticISO8601: "2024-09-09T22:41:15+0000")
       let date = try await database.read { db in
-        try DummyRow.select { _ in SQLiteUUIDV7.toDate(UUIDV7(uuidDate)) }.fetchOne(db)!
+        try DummyRow.select { _ in UUIDV7(uuidDate).toDate() }.fetchOne(db)!
       }
       #expect(date == uuidDate)
     }
@@ -208,7 +208,7 @@
 
       let uuidDate = Date(staticISO8601: "2024-09-09T22:41:15+0000")
       let timestamp = try await database.read { db in
-        try DummyRow.select { _ in SQLiteUUIDV7.toUnixEpoch(UUIDV7(uuidDate)) }.fetchOne(db)!
+        try DummyRow.select { _ in UUIDV7(uuidDate).toUnixEpoch() }.fetchOne(db)!
       }
       #expect(timestamp == uuidDate.timeIntervalSince1970)
     }

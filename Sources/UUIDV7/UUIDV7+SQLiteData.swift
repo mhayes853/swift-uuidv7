@@ -176,4 +176,50 @@
       SQLQueryExpression("uuidv7_to_unixepoch(\(expression))")
     }
   }
+
+  // MARK: - UUIDV7 QueryExpression Helpers
+
+  extension QueryExpression where QueryValue == UUIDV7 {
+    /// Converts this ``UUIDV7`` expression to a date.
+    ///
+    /// This calls the `uuidv7_to_date` SQL function.
+    ///
+    /// ```swift
+    /// Item.select { $0.id.toDate() }
+    /// // SELECT "uuidv7_to_date"("items"."id") FROM "items"
+    /// ```
+    ///
+    /// - Returns: A query expression for the date.
+    public func toDate() -> some QueryExpression<Date> {
+      SQLiteUUIDV7.toDate(self)
+    }
+
+    /// Converts this ``UUIDV7`` expression to a lowercase UUID string.
+    ///
+    /// This calls the `uuidv7_to_text` SQL function.
+    ///
+    /// ```swift
+    /// Item.select { $0.id.toText() }
+    /// // SELECT "uuidv7_to_text"("items"."id") FROM "items"
+    /// ```
+    ///
+    /// - Returns: A query expression for the lowercase UUID string.
+    public func toText() -> some QueryExpression<String> {
+      SQLiteUUIDV7.toText(self)
+    }
+
+    /// Converts this ``UUIDV7`` expression to a numeric unix epoch.
+    ///
+    /// This calls the `uuidv7_to_unixepoch` SQL function.
+    ///
+    /// ```swift
+    /// Item.select { $0.id.toUnixEpoch() }
+    /// // SELECT "uuidv7_to_unixepoch"("items"."id") FROM "items"
+    /// ```
+    ///
+    /// - Returns: A query expression for the unix epoch (seconds since 1970).
+    public func toUnixEpoch() -> some QueryExpression<Double> {
+      SQLiteUUIDV7.toUnixEpoch(self)
+    }
+  }
 #endif
