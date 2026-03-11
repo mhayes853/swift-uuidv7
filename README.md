@@ -90,7 +90,11 @@ The library ships with UUID v7 support to popular libraries in the ecosystem, ea
 Additionally, `UUIDV7` conforms to `EntityIdentifierConvertible` from AppIntents, which is available without a need to specify a trait when building for Apple platforms.
 
 ## Installation
-You can add Swift UUIDV7 to an Xcode project by adding it to your project as a package.
+### Standalone File
+If you do not want to add Swift UUIDV7 as a package dependency, you can copy the contents of [`Sources/UUIDV7/UUIDV7.swift`](./Sources/UUIDV7/UUIDV7.swift) directly into your project as a standalone file.
+
+### Swift Package Manager / Xcode
+If you want integrations, package traits, and dependency-managed updates, add Swift UUIDV7 to your project as a package.
 
 > [https://github.com/mhayes853/swift-uuidv7](https://github.com/mhayes853/swift-uuidv7)
 
