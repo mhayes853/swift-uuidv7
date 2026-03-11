@@ -476,7 +476,7 @@ extension UUIDV7 {
 
 // MARK: - Lock
 
-private struct Lock<State> {
+struct _UUIDV7Lock<State> {
   private let buffer: ManagedBuffer<State, PlatformLock.Primitive>
 
   init(_ initial: State) {
@@ -487,7 +487,7 @@ private struct Lock<State> {
   }
 }
 
-extension Lock {
+extension _UUIDV7Lock {
   private final class LockedBuffer: ManagedBuffer<State, PlatformLock.Primitive> {
     deinit {
       self.withUnsafeMutablePointerToElements { PlatformLock.deinitialize($0) }
@@ -495,7 +495,7 @@ extension Lock {
   }
 }
 
-extension Lock {
+extension _UUIDV7Lock {
   func withLock<R>(_ critical: (inout State) throws -> sending R) rethrows -> R {
     try self.buffer.withUnsafeMutablePointers { header, lock in
       PlatformLock.lock(lock)
@@ -506,7 +506,7 @@ extension Lock {
 }
 
 // NB: This is safe because all mutable state is accessed only while holding `PlatformLock`.
-extension Lock: @unchecked Sendable where State: Sendable {}
+extension _UUIDV7Lock: @unchecked Sendable where State: Sendable {}
 
 // MARK: - PlatformLock
 
@@ -584,7 +584,7 @@ private enum PlatformLock {
 
 /// See https://www.rfc-editor.org/rfc/rfc9562.html#section-6.2-5.1
 private struct MonotonicityState: Sendable {
-  static let current = Lock(Self())
+  static let current = _UUIDV7Lock(Self())
 
   private var previousTimestamp = UInt64(0)
   private var sequence = UInt16(0)
@@ -620,7 +620,7 @@ extension MonotonicityState {
 // MARK: - RandomUUIDBytesGenerator
 
 private struct RandomUUIDBytesGenerator {
-  static nonisolated(unsafe) let shared = Lock(Self())
+  static nonisolated(unsafe) let shared = _UUIDV7Lock(Self())
 
   private static let cacheSize = 256
 
