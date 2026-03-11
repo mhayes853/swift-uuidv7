@@ -1,20 +1,69 @@
-#if canImport(Darwin)
-  import Darwin
+#if canImport(WinSDK)
+  import WinSDK
 #elseif canImport(Android)
   import Android
+#elseif canImport(Darwin)
+  import Darwin
 #elseif canImport(Glibc)
   import Glibc
 #elseif canImport(Musl)
   import Musl
-#elseif canImport(WinSDK)
-  import WinSDK
+#elseif canImport(Bionic)
+  import Bionic
 #elseif os(WASI)
   import WASILibc
+#elseif arch(wasm32)
+#else
+  #error("Unsupported platform")
 #endif
 
 #if canImport(Foundation)
   import Foundation
 #endif
+
+#if canImport(Foundation)
+  public typealias UUIDBytes = uuid_t
+#else
+  public typealias UUIDBytes = (
+    UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
+    UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8
+  )
+
+  public typealias TimeInterval = Double
+#endif
+
+/// A variant of UUID as defined by RFC 9562.
+public enum UUIDVariant: Hashable, Sendable {
+  /// Reserved by the NCS for backward compatibility.
+  case ncs
+
+  /// The default variant as defined by RFC 9562.
+  case rfc9562
+
+  /// Reserved by Microsoft for backward compatibility.
+  case microsoft
+
+  /// Reserved for future use.
+  case future
+
+  /// The variant of the specified ``UUIDBytes`` as defined by RFC 9562.
+  public init(uuid: UUIDBytes) {
+    let x = uuid.8
+    if x & 0x80 == 0x00 {
+      self = .ncs
+    } else if x & 0xC0 == 0x80 {
+      self = .rfc9562
+    } else if x & 0xE0 == 0xC0 {
+      self = .microsoft
+    } else if x & 0xE0 == 0xE0 {
+      self = .future
+    } else {
+      self = .future
+    }
+  }
+}
+
+// MARK: - UUIDV7
 
 #if canImport(Foundation)
   @dynamicMemberLookup
@@ -423,4 +472,196 @@ extension UUIDV7 {
     default: nil
     }
   }
+}
+
+// MARK: - Lock
+
+private struct Lock<State> {
+  private let buffer: ManagedBuffer<State, PlatformLock.Primitive>
+
+  init(_ initial: State) {
+    self.buffer = LockedBuffer.create(minimumCapacity: 1) { buffer in
+      buffer.withUnsafeMutablePointerToElements { PlatformLock.initialize($0) }
+      return initial
+    }
+  }
+}
+
+extension Lock {
+  private final class LockedBuffer: ManagedBuffer<State, PlatformLock.Primitive> {
+    deinit {
+      self.withUnsafeMutablePointerToElements { PlatformLock.deinitialize($0) }
+    }
+  }
+}
+
+extension Lock {
+  func withLock<R>(_ critical: (inout State) throws -> sending R) rethrows -> R {
+    try self.buffer.withUnsafeMutablePointers { header, lock in
+      PlatformLock.lock(lock)
+      defer { PlatformLock.unlock(lock) }
+      return try critical(&header.pointee)
+    }
+  }
+}
+
+// NB: This is safe because all mutable state is accessed only while holding `PlatformLock`.
+extension Lock: @unchecked Sendable where State: Sendable {}
+
+// MARK: - PlatformLock
+
+private enum PlatformLock {
+  #if canImport(Darwin)
+    typealias Primitive = os_unfair_lock
+  #elseif canImport(Glibc) || canImport(Musl) || canImport(Bionic)
+    #if os(FreeBSD) || os(OpenBSD)
+      typealias Primitive = pthread_mutex_t?
+    #else
+      typealias Primitive = pthread_mutex_t
+    #endif
+  #elseif canImport(WinSDK)
+    typealias Primitive = SRWLOCK
+  #elseif arch(wasm32)
+    typealias Primitive = Int
+  #else
+    #error("Unsupported platform")
+  #endif
+
+  typealias Pointer = UnsafeMutablePointer<Primitive>
+
+  static func initialize(_ platformLock: Pointer) {
+    #if canImport(Darwin)
+      platformLock.initialize(to: os_unfair_lock())
+    #elseif canImport(Glibc) || canImport(Musl) || canImport(Bionic)
+      let result = pthread_mutex_init(platformLock, nil)
+      precondition(result == 0, "pthread_mutex_init failed")
+    #elseif canImport(WinSDK)
+      InitializeSRWLock(platformLock)
+    #elseif arch(wasm32)
+      platformLock.initialize(to: 0)
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
+
+  static func deinitialize(_ platformLock: Pointer) {
+    #if canImport(Glibc) || canImport(Musl) || canImport(Bionic)
+      let result = pthread_mutex_destroy(platformLock)
+      precondition(result == 0, "pthread_mutex_destroy failed")
+    #endif
+    platformLock.deinitialize(count: 1)
+  }
+
+  static func lock(_ platformLock: Pointer) {
+    #if canImport(Darwin)
+      os_unfair_lock_lock(platformLock)
+    #elseif canImport(Glibc) || canImport(Musl) || canImport(Bionic)
+      pthread_mutex_lock(platformLock)
+    #elseif canImport(WinSDK)
+      AcquireSRWLockExclusive(platformLock)
+    #elseif arch(wasm32)
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
+
+  static func unlock(_ platformLock: Pointer) {
+    #if canImport(Darwin)
+      os_unfair_lock_unlock(platformLock)
+    #elseif canImport(Glibc) || canImport(Musl) || canImport(Bionic)
+      let result = pthread_mutex_unlock(platformLock)
+      precondition(result == 0, "pthread_mutex_unlock failed")
+    #elseif canImport(WinSDK)
+      ReleaseSRWLockExclusive(platformLock)
+    #elseif arch(wasm32)
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
+}
+
+// MARK: - MonotonicityState
+
+/// See https://www.rfc-editor.org/rfc/rfc9562.html#section-6.2-5.1
+private struct MonotonicityState: Sendable {
+  static let current = Lock(Self())
+
+  private var previousTimestamp = UInt64(0)
+  private var sequence = UInt16(0)
+  private var offset = UInt64(0)
+
+  private init() {}
+}
+
+extension MonotonicityState {
+  mutating func nextMillisWithSequence(
+    timeIntervalSince1970 timeInterval: TimeInterval
+  ) -> (UInt64, UInt16) {
+    var currentMillis = UInt64(timeInterval * 1000) &+ self.offset
+    if self.previousTimestamp == currentMillis {
+      self.sequence &+= 1
+    } else if currentMillis < self.previousTimestamp {
+      self.sequence &+= 1
+      self.offset = self.previousTimestamp - currentMillis
+      currentMillis = self.previousTimestamp
+    } else {
+      self.offset = 0
+      self.sequence = 0
+    }
+    if self.sequence > 0xFFF {
+      self.sequence = 0
+      currentMillis &+= 1
+    }
+    self.previousTimestamp = currentMillis
+    return (currentMillis, self.sequence)
+  }
+}
+
+// MARK: - RandomUUIDBytesGenerator
+
+private struct RandomUUIDBytesGenerator {
+  static nonisolated(unsafe) let shared = Lock(Self())
+
+  private static let cacheSize = 256
+
+  private var cache = UnsafeMutablePointer<UUIDBytes>.allocate(capacity: Self.cacheSize)
+  private var cacheIndex = 0
+
+  private init() {}
+}
+
+extension RandomUUIDBytesGenerator {
+  mutating func next() -> UUIDBytes {
+    defer { self.cacheIndex = (self.cacheIndex + 1) % Self.cacheSize }
+    if self.cacheIndex == 0 {
+      self.readBytes()
+    }
+    return self.cache[self.cacheIndex]
+  }
+}
+
+extension RandomUUIDBytesGenerator {
+  #if os(Windows)
+    private func readBytes() {
+      BCryptGenRandom(
+        nil,
+        self.cache,
+        UInt32(MemoryLayout<UUIDBytes>.size * Self.cacheSize),
+        UInt32(BCRYPT_RNG_USE_ENTROPY_IN_BUFFER | BCRYPT_USE_SYSTEM_PREFERRED_RNG)
+      )
+    }
+  #elseif os(WASI)
+    private func readBytes() {
+      _ = __wasi_random_get(
+        self.cache,
+        __wasi_size_t(MemoryLayout<UUIDBytes>.size * Self.cacheSize)
+      )
+    }
+  #else
+    private func readBytes() {
+      let fd = open("/dev/urandom", O_RDONLY)
+      read(fd, self.cache, MemoryLayout<UUIDBytes>.size * Self.cacheSize)
+      close(fd)
+    }
+  #endif
 }
