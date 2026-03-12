@@ -184,9 +184,9 @@
     @Test("Monotonically Increases when System Time is Moved Backwards")
     func monotonicallyIncreasingWhenBackwards() async throws {
       let date = Date()
-      let u1 = UUIDV7(systemNow: date)
-      let u2 = UUIDV7(systemNow: date - 1000)
-      let u3 = UUIDV7(systemNow: date - 2000)
+      let u1 = UUIDV7(_systemNow: date)
+      let u2 = UUIDV7(_systemNow: date - 1000)
+      let u3 = UUIDV7(_systemNow: date - 2000)
       #expect(u3 > u2)
       #expect(u2 > u1)
       #expect(u1 < u2)
@@ -196,10 +196,10 @@
     @Test("Monotonically Increases when System Time Fluctuates")
     func monotonicallyIncreasingWhenFluctuating() async throws {
       let date = Date()
-      var u1 = UUIDV7(systemNow: date)
+      var u1 = UUIDV7(_systemNow: date)
       for i in 0..<1000 {
         let interval = TimeInterval(i.isMultiple(of: 2) ? -i : i)
-        let u2 = UUIDV7(systemNow: date + interval)
+        let u2 = UUIDV7(_systemNow: date + interval)
         #expect(u2 > u1)
         #expect(u1 < u2)
         u1 = u2
@@ -209,15 +209,15 @@
     @Test("Monotonically Increases when Jump in System Time")
     func monotonicallyIncreasesWhenJump() async throws {
       let date = Date()
-      var u1 = UUIDV7(systemNow: date)
+      var u1 = UUIDV7(_systemNow: date)
       for i in 0..<1000 {
-        let u2 = UUIDV7(systemNow: date - TimeInterval(i))
+        let u2 = UUIDV7(_systemNow: date - TimeInterval(i))
         #expect(u2 > u1)
         #expect(u1 < u2)
         u1 = u2
       }
       for i in 1000..<2000 {
-        let u2 = UUIDV7(systemNow: date + TimeInterval(i))
+        let u2 = UUIDV7(_systemNow: date + TimeInterval(i))
         #expect(u2 > u1)
         #expect(u1 < u2)
         u1 = u2
