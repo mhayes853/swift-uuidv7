@@ -145,8 +145,8 @@ extension UUIDV7 {
 
 #if canImport(Foundation)
   extension UUIDV7 {
-    package init(systemNow: Date) {
-      self.init(systemNow: systemNow.timeIntervalSince1970)
+    package init(_systemNow: Date) {
+      self.init(systemNow: _systemNow.timeIntervalSince1970)
     }
   }
 #endif
