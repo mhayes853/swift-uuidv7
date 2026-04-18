@@ -98,7 +98,8 @@ If you want integrations, package traits, and dependency-managed updates, add Sw
 
 > [https://github.com/mhayes853/swift-uuidv7](https://github.com/mhayes853/swift-uuidv7)
 
-> ⚠️ At of the time of writing this, Xcode 26.2 does not seem to include a UI for enabling traits on swift packages through the `Files > Add Package Dependencies` menu. If you want to enable traits, you will have to install the library inside a local swift package that lives outside your Xcode project.
+> [!NOTE] 
+> Xcode 26.4 is required for using traits directly in Xcode projects.
 
 If you want to use Swift UUIDV7 in a [SwiftPM](https://swift.org/package-manager/) project, it’s as simple as adding it to your `Package.swift`:
 
@@ -106,7 +107,7 @@ If you want to use Swift UUIDV7 in a [SwiftPM](https://swift.org/package-manager
 dependencies: [
   .package(
     url: "https://github.com/mhayes853/swift-uuidv7",
-    from: "0.5.0",
+    from: "0.6.1",
     // You can omit the traits if you don't need any of them.
     traits: ["SwiftUUIDV7GRDB"]
   ),
