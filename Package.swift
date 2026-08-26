@@ -5,7 +5,7 @@ import PackageDescription
 
 let package = Package(
   name: "swift-uuidv7",
-  platforms: [.iOS(.v13), .macOS(.v10_15), .tvOS(.v13), .watchOS(.v7), .macCatalyst(.v13)],
+  platforms: [.iOS(.v16), .macOS(.v13), .tvOS(.v16), .watchOS(.v9), .macCatalyst(.v16)],
   products: [.library(name: "UUIDV7", targets: ["UUIDV7"])],
   traits: [
     .trait(
@@ -56,7 +56,7 @@ let package = Package(
     .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.0.0"),
     .package(
       url: "https://github.com/pointfreeco/sqlite-data",
-      from: "1.0.0",
+      from: "1.11.0",
       traits: [.trait(name: "SQLiteDataTagged", condition: .when(traits: ["SwiftUUIDV7Tagged"]))]
     )
   ],
