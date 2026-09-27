@@ -64,6 +64,7 @@ let package = Package(
     .target(
       name: "UUIDV7",
       dependencies: [
+        "UUIDV7Assembly",
         .product(
           name: "GRDB",
           package: "GRDB.swift",
@@ -96,6 +97,7 @@ let package = Package(
         )
       ]
     ),
+    .target(name: "UUIDV7Assembly"),
     .testTarget(
       name: "UUIDV7Tests",
       dependencies: [

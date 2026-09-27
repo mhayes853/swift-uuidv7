@@ -21,6 +21,12 @@
   import Foundation
 #endif
 
+// NB: 64-bit ARM uses a NEON assembly implementation for generation and string conversions. All
+// other platforms (and standalone copies of this file) use the portable Swift implementation.
+#if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
+  internal import UUIDV7Assembly
+#endif
+
 #if canImport(Foundation)
   public typealias UUIDBytes = uuid_t
 #else
@@ -129,17 +135,25 @@ extension UUIDV7 {
   }
 
   private init(systemNow: TimeInterval) {
-    let (millis, sequence) = MonotonicityState.current.withLock {
-      $0.nextMillisWithSequence(timeIntervalSince1970: systemNow)
-    }
-    var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
-    withUnsafePointer(to: sequence.bigEndian) { ptr in
-      ptr.withMemoryRebound(to: (UInt8, UInt8).self, capacity: 1) {
-        bytes.6 = $0.pointee.0
-        bytes.7 = $0.pointee.1
+    #if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
+      var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
+      MonotonicityState.current.withLock {
+        $0.applyTimestamp(timeIntervalSince1970: systemNow, to: &bytes)
       }
-    }
-    self.init(millis, &bytes)
+      self.uuid = bytes
+    #else
+      let (millis, sequence) = MonotonicityState.current.withLock {
+        $0.nextMillisWithSequence(timeIntervalSince1970: systemNow)
+      }
+      var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
+      withUnsafePointer(to: sequence.bigEndian) { ptr in
+        ptr.withMemoryRebound(to: (UInt8, UInt8).self, capacity: 1) {
+          bytes.6 = $0.pointee.0
+          bytes.7 = $0.pointee.1
+        }
+      }
+      self.init(millis, &bytes)
+    #endif
   }
 }
 
@@ -194,18 +208,22 @@ extension UUIDV7 {
   }
 
   private init(_ timeMillis: UInt64, _ bytes: inout UUIDBytes) {
-    withUnsafePointer(to: timeMillis.bigEndian) { ptr in
-      let ptr = UnsafeRawPointer(ptr).advanced(by: 2)
-        .assumingMemoryBound(to: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8).self)
-      bytes.0 = ptr.pointee.0
-      bytes.1 = ptr.pointee.1
-      bytes.2 = ptr.pointee.2
-      bytes.3 = ptr.pointee.3
-      bytes.4 = ptr.pointee.4
-      bytes.5 = ptr.pointee.5
-    }
-    bytes.6 = (bytes.6 & 0x0F) | 0x70
-    bytes.8 = (bytes.8 & 0x3F) | 0x80
+    #if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
+      uuidv7_apply_timestamp(&bytes, timeMillis)
+    #else
+      withUnsafePointer(to: timeMillis.bigEndian) { ptr in
+        let ptr = UnsafeRawPointer(ptr).advanced(by: 2)
+          .assumingMemoryBound(to: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8).self)
+        bytes.0 = ptr.pointee.0
+        bytes.1 = ptr.pointee.1
+        bytes.2 = ptr.pointee.2
+        bytes.3 = ptr.pointee.3
+        bytes.4 = ptr.pointee.4
+        bytes.5 = ptr.pointee.5
+      }
+      bytes.6 = (bytes.6 & 0x0F) | 0x70
+      bytes.8 = (bytes.8 & 0x3F) | 0x80
+    #endif
     self.uuid = bytes
   }
 }
@@ -403,76 +421,98 @@ extension UUIDV7 {
       return TimeInterval(tv.tv_sec) + TimeInterval(tv.tv_usec) / 1_000_000
     #endif
   }
+}
 
-  private static let hyphen = UInt8(0x2D)
-  private static let hexLookup = [Character]("0123456789ABCDEF")
-  private static let expectedHyphenIndices = Set([8, 13, 18, 23])
-
-  private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
-    var nibbles = [UInt8]()
-    nibbles.reserveCapacity(32)
-
-    for (index, character) in uuidString.utf8.enumerated() {
-      if character == Self.hyphen {
-        guard Self.expectedHyphenIndices.contains(index) else { return nil }
-        continue
-      }
-      guard let value = Self.hexValue(character) else { return nil }
-      nibbles.append(value)
+#if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
+  extension UUIDV7 {
+    private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
+      var uuidString = uuidString
+      var bytes: UUIDBytes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+      let isValid = uuidString.withUTF8 { uuidv7_decode($0.baseAddress, $0.count, &bytes) }
+      return isValid ? bytes : nil
     }
 
-    guard nibbles.count == 32 else { return nil }
-
-    var byteArray = [UInt8](repeating: 0, count: 16)
-    var nibbleIndex = 0
-    for byteIndex in 0..<16 {
-      let high = nibbles[nibbleIndex]
-      let low = nibbles[nibbleIndex + 1]
-      nibbleIndex += 2
-      byteArray[byteIndex] = (high << 4) | low
-    }
-
-    return byteArray.withUnsafeBytes { $0.load(as: UUIDBytes.self) }
-  }
-
-  private static let hyphenPositions = Set([8, 12, 16, 20])
-
-  private static func string(from bytes: UUIDBytes) -> String {
-    withUnsafeBytes(of: bytes) { rawBytes in
-      var output = ""
-      output.reserveCapacity(36)
-
-      var hexCount = 0
-      for byte in rawBytes {
-        let high = Int(byte >> 4)
-        let low = Int(byte & 0x0F)
-
-        output.append(Self.hexLookup[high])
-        output.append(Self.hexLookup[low])
-
-        hexCount += 2
-
-        if Self.hyphenPositions.contains(hexCount) {
-          output.append("-")
+    private static func string(from bytes: UUIDBytes) -> String {
+      withUnsafeBytes(of: bytes) { uuid in
+        String(unsafeUninitializedCapacity: 36) { buffer in
+          uuidv7_encode(uuid.baseAddress!, buffer.baseAddress!)
+          return 36
         }
       }
-      return output
     }
   }
+#else
+  extension UUIDV7 {
+    private static let hyphen = UInt8(0x2D)
+    private static let hexLookup = [Character]("0123456789ABCDEF")
+    private static let expectedHyphenIndices = Set([8, 13, 18, 23])
 
-  private static let numericRange = UInt8(48)...57
-  private static let uppercaseRange = UInt8(65)...70
-  private static let lowercaseRange = UInt8(97)...102
+    private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
+      var nibbles = [UInt8]()
+      nibbles.reserveCapacity(32)
 
-  private static func hexValue(_ character: UInt8) -> UInt8? {
-    switch character {
-    case numericRange: character &- 48
-    case uppercaseRange: character &- 55
-    case lowercaseRange: character &- 87
-    default: nil
+      for (index, character) in uuidString.utf8.enumerated() {
+        if character == Self.hyphen {
+          guard Self.expectedHyphenIndices.contains(index) else { return nil }
+          continue
+        }
+        guard let value = Self.hexValue(character) else { return nil }
+        nibbles.append(value)
+      }
+
+      guard nibbles.count == 32 else { return nil }
+
+      var byteArray = [UInt8](repeating: 0, count: 16)
+      var nibbleIndex = 0
+      for byteIndex in 0..<16 {
+        let high = nibbles[nibbleIndex]
+        let low = nibbles[nibbleIndex + 1]
+        nibbleIndex += 2
+        byteArray[byteIndex] = (high << 4) | low
+      }
+
+      return byteArray.withUnsafeBytes { $0.load(as: UUIDBytes.self) }
+    }
+
+    private static let hyphenPositions = Set([8, 12, 16, 20])
+
+    private static func string(from bytes: UUIDBytes) -> String {
+      withUnsafeBytes(of: bytes) { rawBytes in
+        var output = ""
+        output.reserveCapacity(36)
+
+        var hexCount = 0
+        for byte in rawBytes {
+          let high = Int(byte >> 4)
+          let low = Int(byte & 0x0F)
+
+          output.append(Self.hexLookup[high])
+          output.append(Self.hexLookup[low])
+
+          hexCount += 2
+
+          if Self.hyphenPositions.contains(hexCount) {
+            output.append("-")
+          }
+        }
+        return output
+      }
+    }
+
+    private static let numericRange = UInt8(48)...57
+    private static let uppercaseRange = UInt8(65)...70
+    private static let lowercaseRange = UInt8(97)...102
+
+    private static func hexValue(_ character: UInt8) -> UInt8? {
+      switch character {
+      case numericRange: character &- 48
+      case uppercaseRange: character &- 55
+      case lowercaseRange: character &- 87
+      default: nil
+      }
     }
   }
-}
+#endif
 
 // MARK: - Lock
 
@@ -586,36 +626,51 @@ private enum PlatformLock {
 private struct MonotonicityState: Sendable {
   static let current = _UUIDV7Lock(Self())
 
-  private var previousTimestamp = UInt64(0)
-  private var sequence = UInt16(0)
-  private var offset = UInt64(0)
+  #if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
+    private var state = uuidv7_monotonic_state()
+  #else
+    private var previousTimestamp = UInt64(0)
+    private var sequence = UInt16(0)
+    private var offset = UInt64(0)
+  #endif
 
   private init() {}
 }
 
-extension MonotonicityState {
-  mutating func nextMillisWithSequence(
-    timeIntervalSince1970 timeInterval: TimeInterval
-  ) -> (UInt64, UInt16) {
-    var currentMillis = UInt64(timeInterval * 1000) &+ self.offset
-    if self.previousTimestamp == currentMillis {
-      self.sequence &+= 1
-    } else if currentMillis < self.previousTimestamp {
-      self.sequence &+= 1
-      self.offset = self.previousTimestamp - currentMillis
-      currentMillis = self.previousTimestamp
-    } else {
-      self.offset = 0
-      self.sequence = 0
+#if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
+  extension MonotonicityState {
+    mutating func applyTimestamp(
+      timeIntervalSince1970 timeInterval: TimeInterval,
+      to bytes: inout UUIDBytes
+    ) {
+      uuidv7_apply_monotonic_timestamp(&self.state, &bytes, UInt64(timeInterval * 1000))
     }
-    if self.sequence > 0xFFF {
-      self.sequence = 0
-      currentMillis &+= 1
-    }
-    self.previousTimestamp = currentMillis
-    return (currentMillis, self.sequence)
   }
-}
+#else
+  extension MonotonicityState {
+    mutating func nextMillisWithSequence(
+      timeIntervalSince1970 timeInterval: TimeInterval
+    ) -> (UInt64, UInt16) {
+      var currentMillis = UInt64(timeInterval * 1000) &+ self.offset
+      if self.previousTimestamp == currentMillis {
+        self.sequence &+= 1
+      } else if currentMillis < self.previousTimestamp {
+        self.sequence &+= 1
+        self.offset = self.previousTimestamp - currentMillis
+        currentMillis = self.previousTimestamp
+      } else {
+        self.offset = 0
+        self.sequence = 0
+      }
+      if self.sequence > 0xFFF {
+        self.sequence = 0
+        currentMillis &+= 1
+      }
+      self.previousTimestamp = currentMillis
+      return (currentMillis, self.sequence)
+    }
+  }
+#endif
 
 // MARK: - RandomUUIDBytesGenerator
 
