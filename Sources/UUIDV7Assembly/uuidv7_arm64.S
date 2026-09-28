@@ -120,26 +120,24 @@ END_FUNCTION(uuidv7_apply_monotonic_timestamp)
 BEGIN_FUNCTION(uuidv7_encode)
   ldr q0, [x0]
   ADDRESS(x9, LOCAL(encode_constants))
-  ldp q1, q2, [x9]                        // v1 = hex digits, v2 = shuffle of string[0..<16]
-  ldr q3, [x9, #32]                       // v3 = shuffle of string[16..<32]
+  ldp q16, q17, [x9]                      // v16 = hex digits, v17 = shuffle of string[0..<16]
+  ldp q18, q19, [x9, #32]                 // v18, v19 = shuffles of string[16..<32], [32..<36]
 
-  movi v4.16b, #0x0F
-  ushr v5.16b, v0.16b, #4                 // High nibbles.
-  and v6.16b, v0.16b, v4.16b              // Low nibbles.
-  zip1 v16.16b, v5.16b, v6.16b            // Nibbles of bytes 0-7 in string order.
-  zip2 v17.16b, v5.16b, v6.16b            // Nibbles of bytes 8-15 in string order.
-  tbl v16.16b, {v1.16b}, v16.16b          // v16 = hex[0..<16]
-  tbl v17.16b, {v1.16b}, v17.16b          // v17 = hex[16..<32]
+  movi v3.16b, #0x0F
+  ushr v1.16b, v0.16b, #4
+  and v2.16b, v0.16b, v3.16b
+  tbl v1.16b, {v16.16b}, v1.16b           // Hex digits of the high nibbles.
+  tbl v2.16b, {v16.16b}, v2.16b           // Hex digits of the low nibbles.
 
-  // Out of range shuffle indices leave the hyphens in place.
-  movi v18.16b, #0x2D                     // -
-  movi v19.16b, #0x2D
-  tbx v18.16b, {v16.16b, v17.16b}, v2.16b
-  tbx v19.16b, {v16.16b, v17.16b}, v3.16b
+  // Each shuffle interleaves the digits, and its out of range indices leave the hyphens in place.
+  movi v4.16b, #0x2D                      // -
+  movi v5.16b, #0x2D
+  tbx v4.16b, {v1.16b, v2.16b}, v17.16b
+  tbx v5.16b, {v1.16b, v2.16b}, v18.16b
+  tbl v6.16b, {v1.16b, v2.16b}, v19.16b
 
-  stp q18, q19, [x1]                      // string[0..<32]
-  add x9, x1, #32
-  st1 {v17.s}[3], [x9]                    // string[32..<36] = hex[28..<32]
+  stp q4, q5, [x1]                        // string[0..<32]
+  str s6, [x1, #32]                       // string[32..<36]
   ret
 END_FUNCTION(uuidv7_encode)
 
@@ -154,70 +152,90 @@ END_FUNCTION(uuidv7_encode)
 // This accepts exactly what the portable Swift implementation accepts: 32 case-insensitive hex
 // digits, with hyphens allowed at any subset of the string positions 8, 13, 18, and 23. Therefore,
 // valid strings are 32-36 bytes long, and have exactly (length - 32) hyphens.
+//
+// The canonical 36 byte layout gathers its digits with fixed indices, which keeps data dependent
+// loads off of its critical path. Other layouts first work out which hyphens are present.
 BEGIN_FUNCTION(uuidv7_decode)
-  sub x9, x1, #32
-  cmp x9, #4
-  b.hi LOCAL(decode_failure)              // length < 32 || length > 36
+  ADDRESS(x9, LOCAL(decode_constants))
+  ldp q5, q6, [x9, #32]                   // v5, v6 = digit classes by high nibble, by low nibble
+  cmp x1, #36
+  b.ne LOCAL(decode_irregular_layout)
 
   ldp q0, q1, [x0]                        // v0, v1 = string[0..<32]
-  add x9, x0, x1
-  ldur q2, [x9, #-16]                     // v2 = string[(length - 16)..<length]
-  ADDRESS(x10, LOCAL(decode_constants))
+  ldr s2, [x0, #32]                       // v2 = string[32..<36]
+  ldp q3, q4, [x9]                        // v3, v4 = gather indices of the high and low nibbles
+  ldr q7, [x9, #64]                       // v7 = hyphen positions
+  tbl v16.16b, {v0.16b, v1.16b, v2.16b}, v3.16b
+  tbl v17.16b, {v0.16b, v1.16b, v2.16b}, v4.16b
 
-  // w11 = A 4-bit mask of the hyphen positions that hold hyphens.
-  ldp q3, q4, [x10]                       // v3 = hyphen positions, v4 = hyphen mask bits
-  tbl v3.16b, {v0.16b, v1.16b}, v3.16b
-  movi v5.16b, #0x2D                      // -
-  cmeq v3.16b, v3.16b, v5.16b
-  and v3.16b, v3.16b, v4.16b
-  addv b3, v3.16b
-  umov w11, v3.b[0]
+  // v18 = 0xFF in every lane when string[8, 13, 18, 23] are all hyphens.
+  movi v18.16b, #0x2D                     // -
+  mov v19.16b, v18.16b
+  tbx v19.16b, {v0.16b, v1.16b}, v7.16b
+  cmeq v18.16b, v19.16b, v18.16b
 
-  // The hyphens must account for every byte beyond the 32 hex digits.
-  add x12, x10, x11
-  ldrb w12, [x12, #32]
-  cmp x12, x1
+// v16 = high nibble digits, v17 = low nibble digits, v18 = 0xFF in lanes that are otherwise valid.
+LOCAL(decode_digits):
+  // A character is a hex digit when the classes of its high and low nibbles intersect. The high
+  // nibble class of a letter also holds the offset of its value (9) in its upper nibble.
+  movi v20.16b, #0x0F
+  ushr v21.16b, v16.16b, #4
+  ushr v22.16b, v17.16b, #4
+  and v23.16b, v16.16b, v20.16b
+  and v24.16b, v17.16b, v20.16b
+  tbl v21.16b, {v5.16b}, v21.16b
+  tbl v22.16b, {v5.16b}, v22.16b
+  tbl v25.16b, {v6.16b}, v23.16b
+  tbl v26.16b, {v6.16b}, v24.16b
+  cmtst v25.16b, v21.16b, v25.16b         // High nibble digit is valid.
+  cmtst v26.16b, v22.16b, v26.16b         // Low nibble digit is valid.
+  usra v23.16b, v21.16b, #4               // High nibble values.
+  usra v24.16b, v22.16b, #4               // Low nibble values.
+
+  // Every lane must be valid. (shrn packs the 16 lane masks into 64 bits.)
+  and v25.16b, v25.16b, v26.16b
+  and v25.16b, v25.16b, v18.16b
+  shrn v25.8b, v25.8h, #4
+  fmov x10, d25
+  cmn x10, #1
   b.ne LOCAL(decode_failure)
-
-  // Gather the hex digits of the high and low nibbles of each byte, skipping the hyphens.
-  add x12, x10, x11, lsl #5
-  ldp q16, q17, [x12, #48]
-  tbl v16.16b, {v0.16b, v1.16b, v2.16b}, v16.16b
-  tbl v17.16b, {v0.16b, v1.16b, v2.16b}, v17.16b
-
-  // Convert the hex digits to their values.
-  movi v18.16b, #0x30                     // 0
-  movi v19.16b, #10
-  movi v20.16b, #0x20                     // ASCII lowercase bit.
-  movi v21.16b, #0x61                     // a
-  movi v22.16b, #6
-  sub v23.16b, v16.16b, v18.16b           // High nibble digit values.
-  sub v24.16b, v17.16b, v18.16b           // Low nibble digit values.
-  orr v25.16b, v16.16b, v20.16b
-  orr v26.16b, v17.16b, v20.16b
-  sub v25.16b, v25.16b, v21.16b           // High nibble letter offsets from a.
-  sub v26.16b, v26.16b, v21.16b           // Low nibble letter offsets from a.
-  cmhi v27.16b, v19.16b, v23.16b          // High nibble is a digit.
-  cmhi v28.16b, v19.16b, v24.16b          // Low nibble is a digit.
-  cmhi v29.16b, v22.16b, v25.16b          // High nibble is a letter.
-  cmhi v30.16b, v22.16b, v26.16b          // Low nibble is a letter.
-  add v25.16b, v25.16b, v19.16b           // High nibble letter values.
-  add v26.16b, v26.16b, v19.16b           // Low nibble letter values.
-  bit v23.16b, v25.16b, v29.16b           // High nibble values.
-  bit v24.16b, v26.16b, v30.16b           // Low nibble values.
-
-  // Every character must be a digit or a letter.
-  orr v27.16b, v27.16b, v29.16b
-  orr v28.16b, v28.16b, v30.16b
-  and v27.16b, v27.16b, v28.16b
-  uminv b27, v27.16b
-  umov w9, v27.b[0]
-  cbz w9, LOCAL(decode_failure)
 
   sli v24.16b, v23.16b, #4                // (high << 4) | low
   str q24, [x2]
   mov w0, #1
   ret
+
+LOCAL(decode_irregular_layout):
+  sub x10, x1, #32
+  cmp x10, #3
+  b.hi LOCAL(decode_failure)              // length < 32 || length > 35
+  ldp q0, q1, [x0]                        // v0, v1 = string[0..<32]
+  add x10, x0, x1
+  ldur q2, [x10, #-16]                    // v2 = string[(length - 16)..<length]
+
+  // w11 = A 4-bit mask of the hyphen positions that hold hyphens.
+  ldp q3, q4, [x9, #64]                   // v3 = hyphen positions, v4 = hyphen mask bits
+  tbl v3.16b, {v0.16b, v1.16b}, v3.16b
+  movi v7.16b, #0x2D                      // -
+  cmeq v3.16b, v3.16b, v7.16b
+  and v3.16b, v3.16b, v4.16b
+  addv b3, v3.16b
+  umov w11, v3.b[0]
+
+  // The hyphens must account for every byte beyond the 32 hex digits.
+  add x12, x9, x11
+  ldrb w12, [x12, #96]
+  cmp x12, x1
+  b.ne LOCAL(decode_failure)
+
+  // Gather the digits of the layout. Hyphens anywhere else then fail the digit check.
+  add x12, x9, x11, lsl #5
+  ldp q3, q4, [x12, #112]
+  tbl v16.16b, {v0.16b, v1.16b, v2.16b}, v3.16b
+  tbl v17.16b, {v0.16b, v1.16b, v2.16b}, v4.16b
+  movi v18.16b, #0xFF
+  b LOCAL(decode_digits)
+
 LOCAL(decode_failure):
   mov w0, #0
   ret
@@ -240,21 +258,34 @@ LOCAL(generation_constants):
 LOCAL(encode_constants):
   // +0: The hex digits.
   .ascii "0123456789ABCDEF"
-  // +16: string[0..<16] = hex[0..<8] - hex[8..<12] - hex[12..<14]
-  .byte 0, 1, 2, 3, 4, 5, 6, 7, 0xFF, 8, 9, 10, 11, 0xFF, 12, 13
-  // +32: string[16..<32] = hex[14..<16] - hex[16..<20] - hex[20..<28]
-  .byte 14, 15, 0xFF, 16, 17, 18, 19, 0xFF, 20, 21, 22, 23, 24, 25, 26, 27
+  // Shuffles of the hex digits, where index k is the high nibble digit of byte k, and index
+  // 16 + k is its low nibble digit.
+  // +16: string[0..<16]
+  .byte 0, 16, 1, 17, 2, 18, 3, 19, 0xFF, 4, 20, 5, 21, 0xFF, 6, 22
+  // +32: string[16..<32]
+  .byte 7, 23, 0xFF, 8, 24, 9, 25, 0xFF, 10, 26, 11, 27, 12, 28, 13, 29
+  // +48: string[32..<36]
+  .byte 14, 30, 15, 31, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
 
   .p2align 4
 LOCAL(decode_constants):
-  // +0: The string positions that may hold hyphens. (Out of range indices gather 0.)
+  // +0, +16: The gather indices of the high and low nibble digits in the canonical layout, where
+  // indices 32-35 are string[32..<36].
+  .byte  0,  2,  4,  6,  9, 11, 14, 16, 19, 21, 24, 26, 28, 30, 32, 34
+  .byte  1,  3,  5,  7, 10, 12, 15, 17, 20, 22, 25, 27, 29, 31, 33, 35
+  // +32: Digit classes by high nibble. Bit 0 is 0-9 (0x3_), bit 1 is A-F and a-f (0x4_ and 0x6_),
+  // and the upper nibble is the offset of a letter's value from its low nibble.
+  .byte 0x00, 0x00, 0x00, 0x01, 0x92, 0x00, 0x92, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  // +48: Digit classes by low nibble.
+  .byte 0x01, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+  // +64: The string positions that may hold hyphens. (Out of range indices are ignored.)
   .byte 8, 13, 18, 23, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
-  // +16: The bit of each hyphen position in the hyphen mask.
+  // +80: The bit of each hyphen position in the hyphen mask.
   .byte 1, 2, 4, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-  // +32: The expected string length for each hyphen mask (32 + the number of hyphens).
+  // +96: The expected string length for each hyphen mask (32 + the number of hyphens).
   .byte 32, 33, 33, 34, 33, 34, 34, 35, 33, 34, 34, 35, 34, 35, 35, 36
-  // +48: For each hyphen mask, the tbl indices of the high nibble hex digits followed by the low
-  // nibble hex digits. Indices 0-31 are string[0..<32], and indices 32-47 are
+  // +112: For each hyphen mask, the gather indices of the high nibble digits followed by the low
+  // nibble digits. Indices 0-31 are string[0..<32], and indices 32-47 are
   // string[(length - 16)..<length].
   .byte  0,  2,  4,  6,  8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30  // 0b0000 high
   .byte  1,  3,  5,  7,  9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31  // 0b0000 low

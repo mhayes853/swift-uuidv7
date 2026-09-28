@@ -426,10 +426,17 @@ extension UUIDV7 {
 #if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
   extension UUIDV7 {
     private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
+      // NB: Bridged strings may not store contiguous UTF-8, so they're copied into native strings.
+      if let bytes = uuidString.utf8.withContiguousStorageIfAvailable(Self.uuidBytes(fromUTF8:)) {
+        return bytes
+      }
       var uuidString = uuidString
+      return uuidString.withUTF8(Self.uuidBytes(fromUTF8:))
+    }
+
+    private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
       var bytes: UUIDBytes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-      let isValid = uuidString.withUTF8 { uuidv7_decode($0.baseAddress, $0.count, &bytes) }
-      return isValid ? bytes : nil
+      return uuidv7_decode(utf8.baseAddress, utf8.count, &bytes) ? bytes : nil
     }
 
     private static func string(from bytes: UUIDBytes) -> String {
