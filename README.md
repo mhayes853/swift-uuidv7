@@ -94,7 +94,7 @@ Additionally, `UUIDV7` conforms to `EntityIdentifierConvertible` from AppIntents
 If you do not want to add Swift UUIDV7 as a package dependency, you can copy the contents of [`Sources/UUIDV7/UUIDV7.swift`](./Sources/UUIDV7/UUIDV7.swift) directly into your project as a standalone file.
 
 > [!NOTE]
-> The standalone file always uses the portable Swift implementation. On 64-bit ARM, the package instead uses a NEON assembly implementation for generation and string conversions, which makes converting to and from UUID strings significantly faster.
+> The standalone file always uses the portable Swift implementation. On 64-bit ARM, the package instead uses a NEON assembly implementation for generation and string conversions, which is slightly faster at parsing UUID strings.
 
 ### Swift Package Manager / Xcode
 If you want integrations, package traits, and dependency-managed updates, add Swift UUIDV7 to your project as a package.
