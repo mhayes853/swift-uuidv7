@@ -21,11 +21,12 @@
   import Foundation
 #endif
 
-// NB: 64-bit ARM uses a NEON implementation for string conversions (written in C so that it can be
-// inlined), and x86-64 uses an AVX2 assembly implementation on CPUs that support AVX2. All other
-// platforms (and standalone copies of this file) use the portable Swift implementation.
-#if canImport(UUIDV7Assembly) && (arch(arm64) || arch(x86_64)) && !os(Windows)
-  internal import UUIDV7Assembly
+// NB: 64-bit ARM uses a NEON implementation for string conversions, and x86-64 uses an AVX2
+// implementation on CPUs that support AVX2. Both are written in C so that they can be inlined
+// (which on x86-64 requires a target CPU that always supports AVX2). All other platforms (and
+// standalone copies of this file) use the portable Swift implementation.
+#if canImport(CUUIDV7) && (arch(arm64) || arch(x86_64)) && !os(Windows)
+  internal import CUUIDV7
 #endif
 
 #if canImport(Foundation)
@@ -429,7 +430,7 @@ extension UUIDV7 {
   }
 }
 
-#if canImport(UUIDV7Assembly) && (arch(arm64) || arch(x86_64)) && !os(Windows)
+#if canImport(CUUIDV7) && (arch(arm64) || arch(x86_64)) && !os(Windows)
   extension UUIDV7 {
     private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
       guard uuidv7_is_supported() else { return Self.portableUUIDBytes(fromUTF8: utf8) }
