@@ -423,17 +423,21 @@ extension UUIDV7 {
   }
 }
 
+// MARK: - String Conversions
+
+extension UUIDV7 {
+  private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
+    // NB: Bridged strings may not store contiguous UTF-8, so they're copied into native strings.
+    if let bytes = uuidString.utf8.withContiguousStorageIfAvailable(Self.uuidBytes(fromUTF8:)) {
+      return bytes
+    }
+    var uuidString = uuidString
+    return uuidString.withUTF8(Self.uuidBytes(fromUTF8:))
+  }
+}
+
 #if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
   extension UUIDV7 {
-    private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
-      // NB: Bridged strings may not store contiguous UTF-8, so they're copied into native strings.
-      if let bytes = uuidString.utf8.withContiguousStorageIfAvailable(Self.uuidBytes(fromUTF8:)) {
-        return bytes
-      }
-      var uuidString = uuidString
-      return uuidString.withUTF8(Self.uuidBytes(fromUTF8:))
-    }
-
     private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
       var bytes: UUIDBytes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
       return uuidv7_decode(utf8.baseAddress, utf8.count, &bytes) ? bytes : nil
@@ -449,61 +453,113 @@ extension UUIDV7 {
     }
   }
 #else
+  // NB: These process 8 hex digits at a time by packing them into the bytes of a UInt64 (SWAR).
+  // Hex digits are ASCII, so the per-byte arithmetic below never carries into a neighboring byte.
   extension UUIDV7 {
     private static let hyphen = UInt8(0x2D)
-    private static let hexLookup = [Character]("0123456789ABCDEF")
-    private static let expectedHyphenIndices = Set([8, 13, 18, 23])
+    private static let highBits = UInt64(0x8080_8080_8080_8080)
 
-    private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
-      var nibbles = [UInt8]()
-      nibbles.reserveCapacity(32)
-
-      for (index, character) in uuidString.utf8.enumerated() {
-        if character == Self.hyphen {
-          guard Self.expectedHyphenIndices.contains(index) else { return nil }
-          continue
-        }
-        guard let value = Self.hexValue(character) else { return nil }
-        nibbles.append(value)
+    private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
+      guard let string = utf8.baseAddress.map(UnsafeRawPointer.init) else { return nil }
+      switch utf8.count {
+      case 36:
+        guard
+          utf8[8] == Self.hyphen, utf8[13] == Self.hyphen, utf8[18] == Self.hyphen,
+          utf8[23] == Self.hyphen
+        else { return nil }
+        return Self.uuidBytes(
+          fromHexDigits: (
+            Self.characters(string, at: 0),
+            Self.characters(string, at: 9, and: 14),
+            Self.characters(string, at: 19, and: 24),
+            Self.characters(string, at: 28)
+          )
+        )
+      case 32:
+        return Self.uuidBytes(
+          fromHexDigits: (
+            Self.characters(string, at: 0),
+            Self.characters(string, at: 8),
+            Self.characters(string, at: 16),
+            Self.characters(string, at: 24)
+          )
+        )
+      case 33...35:
+        return Self.uuidBytes(fromIrregular: utf8)
+      default:
+        return nil
       }
-
-      guard nibbles.count == 32 else { return nil }
-
-      var byteArray = [UInt8](repeating: 0, count: 16)
-      var nibbleIndex = 0
-      for byteIndex in 0..<16 {
-        let high = nibbles[nibbleIndex]
-        let low = nibbles[nibbleIndex + 1]
-        nibbleIndex += 2
-        byteArray[byteIndex] = (high << 4) | low
-      }
-
-      return byteArray.withUnsafeBytes { $0.load(as: UUIDBytes.self) }
     }
 
-    private static let hyphenPositions = Set([8, 12, 16, 20])
+    /// Loads 8 characters, with the first character in the lowest byte.
+    private static func characters(_ string: UnsafeRawPointer, at offset: Int) -> UInt64 {
+      UInt64(littleEndian: string.loadUnaligned(fromByteOffset: offset, as: UInt64.self))
+    }
 
-    private static func string(from bytes: UUIDBytes) -> String {
-      withUnsafeBytes(of: bytes) { rawBytes in
-        var output = ""
-        output.reserveCapacity(36)
+    /// Loads 4 characters from each offset, with the first character in the lowest byte.
+    private static func characters(
+      _ string: UnsafeRawPointer,
+      at first: Int,
+      and second: Int
+    ) -> UInt64 {
+      let low = UInt32(littleEndian: string.loadUnaligned(fromByteOffset: first, as: UInt32.self))
+      let high = UInt32(littleEndian: string.loadUnaligned(fromByteOffset: second, as: UInt32.self))
+      return UInt64(low) | UInt64(high) << 32
+    }
 
-        var hexCount = 0
-        for byte in rawBytes {
-          let high = Int(byte >> 4)
-          let low = Int(byte & 0x0F)
-
-          output.append(Self.hexLookup[high])
-          output.append(Self.hexLookup[low])
-
-          hexCount += 2
-
-          if Self.hyphenPositions.contains(hexCount) {
-            output.append("-")
-          }
-        }
-        return output
+    private static func uuidBytes(
+      fromHexDigits digits: (UInt64, UInt64, UInt64, UInt64)
+    ) -> UUIDBytes? {
+      var validity = Self.highBits
+      let words = (
+        Self.bytes(fromHexDigits: digits.0, validity: &validity),
+        Self.bytes(fromHexDigits: digits.1, validity: &validity),
+        Self.bytes(fromHexDigits: digits.2, validity: &validity),
+        Self.bytes(fromHexDigits: digits.3, validity: &validity)
+      )
+      guard validity == Self.highBits else { return nil }
+      var bytes: UUIDBytes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+      withUnsafeMutableBytes(of: &bytes) { bytes in
+        bytes.storeBytes(of: words.0.littleEndian, toByteOffset: 0, as: UInt32.self)
+        bytes.storeBytes(of: words.1.littleEndian, toByteOffset: 4, as: UInt32.self)
+        bytes.storeBytes(of: words.2.littleEndian, toByteOffset: 8, as: UInt32.self)
+        bytes.storeBytes(of: words.3.littleEndian, toByteOffset: 12, as: UInt32.self)
       }
+      return bytes
+    }
+
+    /// Decodes 8 hex digits (the first in the lowest byte) into 4 bytes (the first in the lowest
+    /// byte), and clears the high bit of each byte in `validity` that isn't a hex digit.
+    private static func bytes(fromHexDigits digits: UInt64, validity: inout UInt64) -> UInt32 {
+      let isDigit = (digits &+ 0x5050_5050_5050_5050) & ~(digits &+ 0x4646_4646_4646_4646)
+      let lowercased = digits | 0x2020_2020_2020_2020
+      let isLetter = (lowercased &+ 0x1F1F_1F1F_1F1F_1F1F) & ~(lowercased &+ 0x1919_1919_1919_1919)
+      // NB: Non-ASCII bytes can carry into their neighbors above, but they clear their own bit here.
+      validity &= (isDigit | isLetter) & ~digits
+
+      let letterOffsets = ((digits >> 6) & 0x0101_0101_0101_0101) &* 9
+      let values = (digits & 0x0F0F_0F0F_0F0F_0F0F) &+ letterOffsets
+      var bytes = ((values << 4) | (values >> 8)) & 0x00FF_00FF_00FF_00FF
+      bytes = (bytes | (bytes >> 8)) & 0x0000_FFFF_0000_FFFF
+      return UInt32(truncatingIfNeeded: bytes | (bytes >> 16))
+    }
+
+    private static func uuidBytes(fromIrregular utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
+      var bytes: UUIDBytes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+      let isValid = withUnsafeMutableBytes(of: &bytes) { bytes in
+        var nibbleCount = 0
+        for (index, character) in utf8.enumerated() {
+          if character == Self.hyphen {
+            guard index == 8 || index == 13 || index == 18 || index == 23 else { return false }
+            continue
+          }
+          guard let value = Self.hexValue(character), nibbleCount < 32 else { return false }
+          bytes[nibbleCount / 2] |= nibbleCount.isMultiple(of: 2) ? value << 4 : value
+          nibbleCount += 1
+        }
+        return nibbleCount == 32
+      }
+      return isValid ? bytes : nil
     }
 
     private static let numericRange = UInt8(48)...57
@@ -517,6 +573,59 @@ extension UUIDV7 {
       case lowercaseRange: character &- 87
       default: nil
       }
+    }
+
+    private static func string(from bytes: UUIDBytes) -> String {
+      var string: (UInt64, UInt64, UInt64, UInt64, UInt32) = (0, 0, 0, 0, 0)
+      withUnsafeBytes(of: bytes) { uuid in
+        withUnsafeMutableBytes(of: &string) { string in
+          let digits = (
+            Self.hexDigits(of: uuid, at: 0),
+            Self.hexDigits(of: uuid, at: 4),
+            Self.hexDigits(of: uuid, at: 8),
+            Self.hexDigits(of: uuid, at: 12)
+          )
+          string.storeBytes(of: digits.0.littleEndian, toByteOffset: 0, as: UInt64.self)
+          string.storeBytes(of: Self.hyphen, toByteOffset: 8, as: UInt8.self)
+          string.storeBytes(
+            of: UInt32(truncatingIfNeeded: digits.1).littleEndian,
+            toByteOffset: 9,
+            as: UInt32.self
+          )
+          string.storeBytes(of: Self.hyphen, toByteOffset: 13, as: UInt8.self)
+          string.storeBytes(
+            of: UInt32(truncatingIfNeeded: digits.1 >> 32).littleEndian,
+            toByteOffset: 14,
+            as: UInt32.self
+          )
+          string.storeBytes(of: Self.hyphen, toByteOffset: 18, as: UInt8.self)
+          string.storeBytes(
+            of: UInt32(truncatingIfNeeded: digits.2).littleEndian,
+            toByteOffset: 19,
+            as: UInt32.self
+          )
+          string.storeBytes(of: Self.hyphen, toByteOffset: 23, as: UInt8.self)
+          string.storeBytes(
+            of: UInt32(truncatingIfNeeded: digits.2 >> 32).littleEndian,
+            toByteOffset: 24,
+            as: UInt32.self
+          )
+          string.storeBytes(of: digits.3.littleEndian, toByteOffset: 28, as: UInt64.self)
+        }
+      }
+      return withUnsafeBytes(of: string) { String(decoding: $0, as: UTF8.self) }
+    }
+
+    /// The 8 uppercase hex digits of the 4 bytes at `offset`, with the first digit in the lowest
+    /// byte.
+    private static func hexDigits(of uuid: UnsafeRawBufferPointer, at offset: Int) -> UInt64 {
+      let word = UInt32(bigEndian: uuid.loadUnaligned(fromByteOffset: offset, as: UInt32.self))
+      var nibbles = UInt64(word)
+      nibbles = (nibbles | (nibbles << 16)) & 0x0000_FFFF_0000_FFFF
+      nibbles = (nibbles | (nibbles << 8)) & 0x00FF_00FF_00FF_00FF
+      nibbles = (nibbles | (nibbles << 4)) & 0x0F0F_0F0F_0F0F_0F0F
+      let letterOffsets = (((nibbles &+ 0x0606_0606_0606_0606) >> 4) & 0x0101_0101_0101_0101) &* 7
+      return (nibbles &+ 0x3030_3030_3030_3030 &+ letterOffsets).byteSwapped
     }
   }
 #endif
