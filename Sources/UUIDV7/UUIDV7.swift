@@ -136,16 +136,19 @@ extension UUIDV7 {
 
   private init(systemNow: TimeInterval) {
     #if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
-      var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
-      MonotonicityState.current.withLock {
-        $0.applyTimestamp(timeIntervalSince1970: systemNow, to: &bytes)
+      self.uuid = GenerationState.shared.withLock { state in
+        var bytes = state.random.next()
+        state.monotonicity.applyTimestamp(timeIntervalSince1970: systemNow, to: &bytes)
+        return bytes
       }
-      self.uuid = bytes
     #else
-      let (millis, sequence) = MonotonicityState.current.withLock {
-        $0.nextMillisWithSequence(timeIntervalSince1970: systemNow)
+      let (millis, sequence, random) = GenerationState.shared.withLock { state in
+        let (millis, sequence) = state.monotonicity.nextMillisWithSequence(
+          timeIntervalSince1970: systemNow
+        )
+        return (millis, sequence, state.random.next())
       }
-      var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
+      var bytes = random
       withUnsafePointer(to: sequence.bigEndian) { ptr in
         ptr.withMemoryRebound(to: (UInt8, UInt8).self, capacity: 1) {
           bytes.6 = $0.pointee.0
@@ -175,7 +178,7 @@ extension UUIDV7 {
   ///
   /// - Parameter timeInterval: The `TimeInterval` since 00:00:00 UTC on 1 January 1970.
   public init(timeIntervalSince1970 timeInterval: TimeInterval) {
-    var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
+    var bytes = GenerationState.shared.withLock { $0.random.next() }
     self.init(timeInterval, &bytes)
   }
 
@@ -404,7 +407,12 @@ extension UUIDV7: Sendable {}
 
 extension UUIDV7 {
   private static func platformTimeIntervalSince1970() -> TimeInterval {
-    #if canImport(Foundation)
+    #if !os(Windows) && !os(WASI)
+      // NB: This is roughly twice as fast as Date(), which reads the same clock.
+      var time = timespec()
+      clock_gettime(CLOCK_REALTIME, &time)
+      return TimeInterval(time.tv_sec) + TimeInterval(time.tv_nsec) / 1_000_000_000
+    #elseif canImport(Foundation)
       Date().timeIntervalSince1970
     #elseif os(WASI)
       var timestamp: __wasi_timestamp_t = 0
@@ -415,10 +423,6 @@ extension UUIDV7 {
       GetSystemTimePreciseAsFileTime(&fileTime)
       let ticks = (UInt64(fileTime.dwHighDateTime) << 32) | UInt64(fileTime.dwLowDateTime)
       return TimeInterval(ticks) / 10_000_000 - 11_644_473_600
-    #else
-      var tv = timeval()
-      gettimeofday(&tv, nil)
-      return TimeInterval(tv.tv_sec) + TimeInterval(tv.tv_usec) / 1_000_000
     #endif
   }
 }
@@ -736,12 +740,23 @@ private enum PlatformLock {
   }
 }
 
+// MARK: - GenerationState
+
+/// The state of UUID generation, which shares a single lock so that generating a monotonic UUID
+/// only acquires one lock.
+private struct GenerationState {
+  static nonisolated(unsafe) let shared = _UUIDV7Lock(Self())
+
+  var monotonicity = MonotonicityState()
+  var random = RandomUUIDBytesGenerator()
+
+  private init() {}
+}
+
 // MARK: - MonotonicityState
 
 /// See https://www.rfc-editor.org/rfc/rfc9562.html#section-6.2-5.1
 private struct MonotonicityState: Sendable {
-  static let current = _UUIDV7Lock(Self())
-
   #if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
     private var state = uuidv7_monotonic_state()
   #else
@@ -749,8 +764,6 @@ private struct MonotonicityState: Sendable {
     private var sequence = UInt16(0)
     private var offset = UInt64(0)
   #endif
-
-  private init() {}
 }
 
 #if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
@@ -791,14 +804,10 @@ private struct MonotonicityState: Sendable {
 // MARK: - RandomUUIDBytesGenerator
 
 private struct RandomUUIDBytesGenerator {
-  static nonisolated(unsafe) let shared = _UUIDV7Lock(Self())
-
   private static let cacheSize = 256
 
   private var cache = UnsafeMutablePointer<UUIDBytes>.allocate(capacity: Self.cacheSize)
   private var cacheIndex = 0
-
-  private init() {}
 }
 
 extension RandomUUIDBytesGenerator {
@@ -828,8 +837,14 @@ extension RandomUUIDBytesGenerator {
         __wasi_size_t(MemoryLayout<UUIDBytes>.size * Self.cacheSize)
       )
     }
+  #elseif canImport(Darwin) || os(Android) || os(FreeBSD) || os(OpenBSD)
+    private func readBytes() {
+      arc4random_buf(self.cache, MemoryLayout<UUIDBytes>.size * Self.cacheSize)
+    }
   #else
     private func readBytes() {
+      // NB: A single read from /dev/urandom is faster than getentropy, which fills at most 256
+      // bytes per call.
       let fd = open("/dev/urandom", O_RDONLY)
       read(fd, self.cache, MemoryLayout<UUIDBytes>.size * Self.cacheSize)
       close(fd)
