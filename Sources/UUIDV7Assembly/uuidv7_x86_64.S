@@ -1,5 +1,5 @@
-// AVX2 implementations of UUIDV7 string encoding and decoding for x86-64.
-// See include/UUIDV7Assembly.h for the C interface.
+// AVX2 implementations of UUIDV7 string encoding and decoding for x86-64, which
+// include/UUIDV7Assembly.h wraps in its C interface.
 //
 // Not every x86-64 CPU supports AVX2, so callers must check uuidv7_is_supported before calling
 // these functions, and use the portable Swift implementation otherwise. This file assembles to
@@ -97,11 +97,12 @@ END_FUNCTION(uuidv7_detect_cpu_support)
 
 // MARK: - Encoding
 
-// void uuidv7_encode(const void *uuid, void *string)
+// void uuidv7_avx2_encode(const void *uuid, void *string)
 //
 // rdi: The 16 UUID bytes.
 // rsi: The 36 byte buffer for the uppercase hyphenated string.
-BEGIN_FUNCTION(uuidv7_encode)
+  HIDDEN(SYMBOL(uuidv7_avx2_encode))
+BEGIN_FUNCTION(uuidv7_avx2_encode)
   vbroadcasti128 ymm0, xmmword ptr [rdi]  // Both lanes hold the 16 UUID bytes.
   vmovdqa ymm2, ymmword ptr [rip + LOCAL(nibble_mask)]
   vmovdqa ymm3, ymmword ptr [rip + LOCAL(hex_digits)]
@@ -125,11 +126,11 @@ BEGIN_FUNCTION(uuidv7_encode)
   vmovdqu ymmword ptr [rsi], ymm0         // string[0..<32]
   vzeroupper
   ret
-END_FUNCTION(uuidv7_encode)
+END_FUNCTION(uuidv7_avx2_encode)
 
 // MARK: - Decoding
 
-// bool uuidv7_decode(const void *string, size_t length, void *uuid)
+// bool uuidv7_avx2_decode(const void *string, size_t length, void *uuid)
 //
 // rdi: The UTF-8 string.
 // rsi: The length of the string in bytes.
@@ -143,7 +144,8 @@ END_FUNCTION(uuidv7_encode)
 // string[32..<length] into the hyphen positions that hold hyphens. The canonical 36 byte layout
 // does this with fixed indices, the 32 byte layout has nothing to move, and other layouts first
 // work out which hyphens are present.
-BEGIN_FUNCTION(uuidv7_decode)
+  HIDDEN(SYMBOL(uuidv7_avx2_decode))
+BEGIN_FUNCTION(uuidv7_avx2_decode)
   cmp rsi, 36
   jne LOCAL(decode_other_layouts)
 
@@ -244,7 +246,7 @@ LOCAL(decode_failure):
   xor eax, eax
   vzeroupper
   ret
-END_FUNCTION(uuidv7_decode)
+END_FUNCTION(uuidv7_avx2_decode)
 
 // MARK: - CPU Support State
 

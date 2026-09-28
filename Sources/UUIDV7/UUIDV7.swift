@@ -21,9 +21,9 @@
   import Foundation
 #endif
 
-// NB: 64-bit ARM uses a NEON assembly implementation for string conversions, and x86-64 uses an
-// AVX2 assembly implementation on CPUs that support AVX2. All other platforms (and standalone copies
-// of this file) use the portable Swift implementation.
+// NB: 64-bit ARM uses a NEON implementation for string conversions (written in C so that it can be
+// inlined), and x86-64 uses an AVX2 assembly implementation on CPUs that support AVX2. All other
+// platforms (and standalone copies of this file) use the portable Swift implementation.
 #if canImport(UUIDV7Assembly) && (arch(arm64) || arch(x86_64)) && !os(Windows)
   internal import UUIDV7Assembly
 #endif
@@ -433,17 +433,16 @@ extension UUIDV7 {
   extension UUIDV7 {
     private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
       guard uuidv7_is_supported() else { return Self.portableUUIDBytes(fromUTF8: utf8) }
-      var bytes: UUIDBytes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-      return uuidv7_decode(utf8.baseAddress, utf8.count, &bytes) ? bytes : nil
+      let result = uuidv7_decode(utf8.baseAddress, utf8.count)
+      return result.is_valid ? unsafeBitCast(result.bytes.words, to: UUIDBytes.self) : nil
     }
 
     private static func string(from bytes: UUIDBytes) -> String {
       guard uuidv7_is_supported() else { return Self.portableString(from: bytes) }
-      return withUnsafeBytes(of: bytes) { uuid in
-        String(unsafeUninitializedCapacity: 36) { buffer in
-          uuidv7_encode(uuid.baseAddress!, buffer.baseAddress!)
-          return 36
-        }
+      let uuid = uuidv7_bytes(words: unsafeBitCast(bytes, to: (UInt64, UInt64).self))
+      return String(unsafeUninitializedCapacity: 36) { buffer in
+        uuidv7_encode(uuid, buffer.baseAddress!)
+        return 36
       }
     }
   }
