@@ -1,8 +1,8 @@
 // NEON implementations of UUIDV7 string encoding and decoding for 64-bit ARM.
 // See include/UUIDV7Assembly.h for the C interface.
 //
-// This file assembles to nothing on other architectures (and on 64-bit ARM Windows), which use
-// the portable Swift implementation instead.
+// This file assembles to nothing on other architectures, and on 64-bit ARM Windows, which uses the
+// portable Swift implementation instead.
 
 #if defined(__aarch64__) && defined(__LP64__) && !defined(_WIN32)
 
