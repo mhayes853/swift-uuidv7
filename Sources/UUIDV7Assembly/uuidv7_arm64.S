@@ -1,4 +1,4 @@
-// NEON implementations of UUIDV7 generation, string encoding, and string decoding for 64-bit ARM.
+// NEON implementations of UUIDV7 string encoding and decoding for 64-bit ARM.
 // See include/UUIDV7Assembly.h for the C interface.
 //
 // This file assembles to nothing on other architectures (and on 64-bit ARM Windows), which use
@@ -42,74 +42,6 @@
 #define END_FUNCTION(name) FUNCTION_SIZE(SYMBOL(name))
 
   .text
-
-// MARK: - Generation
-
-// void uuidv7_apply_timestamp(void *uuid, uint64_t unix_millis)
-//
-// x0: 16 random bytes that are turned into the UUID in place.
-// x1: The unix timestamp in milliseconds.
-BEGIN_FUNCTION(uuidv7_apply_timestamp)
-  lsl x9, x1, #16
-  orr x9, x9, #0x7000                     // unix_ts_ms (48 bits) | ver (4 bits) | 0 (12 bits)
-  rev x9, x9                              // Big-endian byte order.
-  fmov d1, x9
-  ADDRESS(x10, LOCAL(generation_constants))
-  ldp q2, q3, [x10]                       // v2 = variant, v3 = random bits of rand_a and rand_b
-  orr v1.16b, v1.16b, v2.16b
-  ldr q0, [x0]
-  bit v1.16b, v0.16b, v3.16b              // Keep the random bits of rand_a and rand_b.
-  str q1, [x0]
-  ret
-END_FUNCTION(uuidv7_apply_timestamp)
-
-// void uuidv7_apply_monotonic_timestamp(
-//   uuidv7_monotonic_state *state,
-//   void *uuid,
-//   uint64_t unix_millis
-// )
-//
-// x0: The monotonic state (previous_timestamp at 0, offset at 8, sequence at 16).
-// x1: 16 random bytes that are turned into the UUID in place.
-// x2: The unix timestamp in milliseconds.
-BEGIN_FUNCTION(uuidv7_apply_monotonic_timestamp)
-  ldp x9, x10, [x0]                       // x9 = previous_timestamp, x10 = offset
-  ldrh w11, [x0, #16]                     // w11 = sequence
-  add x12, x2, x10                        // x12 = timestamp = unix_millis &+ offset
-  add w13, w11, #1
-  and w13, w13, #0xFFFF                   // w13 = sequence &+ 1
-  sub x14, x9, x12                        // x14 = previous_timestamp - timestamp
-
-  // timestamp == previous_timestamp: sequence &+= 1
-  // timestamp < previous_timestamp: sequence &+= 1, offset = x14, timestamp = previous_timestamp
-  // timestamp > previous_timestamp: sequence = 0, offset = 0
-  cmp x12, x9
-  csel w11, w13, wzr, ls
-  csel x10, x14, x10, lo
-  csel x10, xzr, x10, hi
-  csel x12, x9, x12, lo
-
-  // When the 12-bit counter overflows, borrow the next millisecond.
-  cmp w11, #0xFFF
-  csel w11, wzr, w11, hi
-  cinc x12, x12, hi
-
-  stp x12, x10, [x0]
-  strh w11, [x0, #16]
-
-  orr x9, x11, x12, lsl #16               // unix_ts_ms (48 bits) | 0 (4 bits) | sequence (12 bits)
-  orr x9, x9, #0x7000                     // ver
-  rev x9, x9                              // Big-endian byte order.
-  fmov d1, x9
-  ADDRESS(x10, LOCAL(generation_constants))
-  ldr q2, [x10]                           // v2 = variant
-  ldr q3, [x10, #32]                      // v3 = random bits of rand_b
-  orr v1.16b, v1.16b, v2.16b
-  ldr q0, [x1]
-  bit v1.16b, v0.16b, v3.16b              // Keep the random bits of rand_b.
-  str q1, [x1]
-  ret
-END_FUNCTION(uuidv7_apply_monotonic_timestamp)
 
 // MARK: - Encoding
 
@@ -244,15 +176,6 @@ END_FUNCTION(uuidv7_decode)
 // MARK: - Constants
 
   CONST_SECTION
-
-  .p2align 4
-LOCAL(generation_constants):
-  // +0: The variant (0b10) in byte 8.
-  .byte 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-  // +16: The random bits of rand_a (bytes 6-7) and rand_b (bytes 8-15).
-  .byte 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0F, 0xFF, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
-  // +32: The random bits of rand_b (bytes 8-15).
-  .byte 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
 
   .p2align 4
 LOCAL(encode_constants):

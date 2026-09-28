@@ -21,8 +21,8 @@
   import Foundation
 #endif
 
-// NB: 64-bit ARM uses a NEON assembly implementation for generation and string conversions. All
-// other platforms (and standalone copies of this file) use the portable Swift implementation.
+// NB: 64-bit ARM uses a NEON assembly implementation for string conversions. All other platforms
+// (and standalone copies of this file) use the portable Swift implementation.
 #if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
   internal import UUIDV7Assembly
 #endif
@@ -135,28 +135,20 @@ extension UUIDV7 {
   }
 
   private init(systemNow: TimeInterval) {
-    #if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
-      self.uuid = GenerationState.shared.withLock { state in
-        var bytes = state.random.next()
-        state.monotonicity.applyTimestamp(timeIntervalSince1970: systemNow, to: &bytes)
-        return bytes
+    let (millis, sequence, random) = GenerationState.shared.withLock { state in
+      let (millis, sequence) = state.monotonicity.nextMillisWithSequence(
+        timeIntervalSince1970: systemNow
+      )
+      return (millis, sequence, state.random.next())
+    }
+    var bytes = random
+    withUnsafePointer(to: sequence.bigEndian) { ptr in
+      ptr.withMemoryRebound(to: (UInt8, UInt8).self, capacity: 1) {
+        bytes.6 = $0.pointee.0
+        bytes.7 = $0.pointee.1
       }
-    #else
-      let (millis, sequence, random) = GenerationState.shared.withLock { state in
-        let (millis, sequence) = state.monotonicity.nextMillisWithSequence(
-          timeIntervalSince1970: systemNow
-        )
-        return (millis, sequence, state.random.next())
-      }
-      var bytes = random
-      withUnsafePointer(to: sequence.bigEndian) { ptr in
-        ptr.withMemoryRebound(to: (UInt8, UInt8).self, capacity: 1) {
-          bytes.6 = $0.pointee.0
-          bytes.7 = $0.pointee.1
-        }
-      }
-      self.init(millis, &bytes)
-    #endif
+    }
+    self.init(millis, &bytes)
   }
 }
 
@@ -211,22 +203,18 @@ extension UUIDV7 {
   }
 
   private init(_ timeMillis: UInt64, _ bytes: inout UUIDBytes) {
-    #if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
-      uuidv7_apply_timestamp(&bytes, timeMillis)
-    #else
-      withUnsafePointer(to: timeMillis.bigEndian) { ptr in
-        let ptr = UnsafeRawPointer(ptr).advanced(by: 2)
-          .assumingMemoryBound(to: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8).self)
-        bytes.0 = ptr.pointee.0
-        bytes.1 = ptr.pointee.1
-        bytes.2 = ptr.pointee.2
-        bytes.3 = ptr.pointee.3
-        bytes.4 = ptr.pointee.4
-        bytes.5 = ptr.pointee.5
-      }
-      bytes.6 = (bytes.6 & 0x0F) | 0x70
-      bytes.8 = (bytes.8 & 0x3F) | 0x80
-    #endif
+    withUnsafePointer(to: timeMillis.bigEndian) { ptr in
+      let ptr = UnsafeRawPointer(ptr).advanced(by: 2)
+        .assumingMemoryBound(to: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8).self)
+      bytes.0 = ptr.pointee.0
+      bytes.1 = ptr.pointee.1
+      bytes.2 = ptr.pointee.2
+      bytes.3 = ptr.pointee.3
+      bytes.4 = ptr.pointee.4
+      bytes.5 = ptr.pointee.5
+    }
+    bytes.6 = (bytes.6 & 0x0F) | 0x70
+    bytes.8 = (bytes.8 & 0x3F) | 0x80
     self.uuid = bytes
   }
 }
@@ -757,49 +745,34 @@ private struct GenerationState {
 
 /// See https://www.rfc-editor.org/rfc/rfc9562.html#section-6.2-5.1
 private struct MonotonicityState: Sendable {
-  #if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
-    private var state = uuidv7_monotonic_state()
-  #else
-    private var previousTimestamp = UInt64(0)
-    private var sequence = UInt16(0)
-    private var offset = UInt64(0)
-  #endif
+  private var previousTimestamp = UInt64(0)
+  private var sequence = UInt16(0)
+  private var offset = UInt64(0)
 }
 
-#if canImport(UUIDV7Assembly) && arch(arm64) && !os(Windows)
-  extension MonotonicityState {
-    mutating func applyTimestamp(
-      timeIntervalSince1970 timeInterval: TimeInterval,
-      to bytes: inout UUIDBytes
-    ) {
-      uuidv7_apply_monotonic_timestamp(&self.state, &bytes, UInt64(timeInterval * 1000))
+extension MonotonicityState {
+  mutating func nextMillisWithSequence(
+    timeIntervalSince1970 timeInterval: TimeInterval
+  ) -> (UInt64, UInt16) {
+    var currentMillis = UInt64(timeInterval * 1000) &+ self.offset
+    if self.previousTimestamp == currentMillis {
+      self.sequence &+= 1
+    } else if currentMillis < self.previousTimestamp {
+      self.sequence &+= 1
+      self.offset = self.previousTimestamp - currentMillis
+      currentMillis = self.previousTimestamp
+    } else {
+      self.offset = 0
+      self.sequence = 0
     }
-  }
-#else
-  extension MonotonicityState {
-    mutating func nextMillisWithSequence(
-      timeIntervalSince1970 timeInterval: TimeInterval
-    ) -> (UInt64, UInt16) {
-      var currentMillis = UInt64(timeInterval * 1000) &+ self.offset
-      if self.previousTimestamp == currentMillis {
-        self.sequence &+= 1
-      } else if currentMillis < self.previousTimestamp {
-        self.sequence &+= 1
-        self.offset = self.previousTimestamp - currentMillis
-        currentMillis = self.previousTimestamp
-      } else {
-        self.offset = 0
-        self.sequence = 0
-      }
-      if self.sequence > 0xFFF {
-        self.sequence = 0
-        currentMillis &+= 1
-      }
-      self.previousTimestamp = currentMillis
-      return (currentMillis, self.sequence)
+    if self.sequence > 0xFFF {
+      self.sequence = 0
+      currentMillis &+= 1
     }
+    self.previousTimestamp = currentMillis
+    return (currentMillis, self.sequence)
   }
-#endif
+}
 
 // MARK: - RandomUUIDBytesGenerator
 
