@@ -75,7 +75,7 @@
     /// ```swift
     /// @Table
     /// struct Item {
-    ///   @Column(as: UUIDV7.UppercasedRepresentation.self)
+    ///   @Column(as: UUIDV7.UppercaseRepresentation.self)
     ///   let id: UUIDV7
     /// }
     ///
@@ -170,6 +170,8 @@
   /// @Table
   /// struct Item {
   ///   let id: UUIDV7
+  ///   let idString: String
+  ///   let createdAt: Date
   /// }
   ///
   /// // Generate a random UUIDV7
