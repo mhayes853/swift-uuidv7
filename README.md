@@ -78,6 +78,7 @@ The library ships with UUID v7 support to popular libraries in the ecosystem, ea
   - **Trait:** `SwiftUUIDV7StructuredQueries`
   - Adds a `QueryBindable` conformance to `UUIDV7`.
   - Adds `UUIDV7.BytesRepresentation` and `UUIDV7.UppercaseRepresentation` column representations of `UUIDV7`.
+  - Adds `ScalarDatabaseFunction` instances for generating, parsing, and extracting properties from `UUIDV7`, and type-safe query expressions under the `SQLiteUUIDV7` namespace to call them.
 - [Dependencies](https://github.com/pointfreeco/swift-dependencies)
   - **Trait:** `SwiftUUIDV7Dependencies`
   - Adds a `UUIDV7Generator` dependency.
