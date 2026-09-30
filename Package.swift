@@ -14,8 +14,10 @@ let package = Package(
     ),
     .trait(
       name: "SwiftUUIDV7StructuredQueries",
-      description:
-        "Adds swift-structured-queries support and column representations to the UUIDV7 type."
+      description: """
+        Adds swift-structured-queries support and column representations to the UUIDV7 type, \
+        and adds SQLite functions to generate, parse, and extract data from UUIDV7s.
+        """
     ),
     .trait(
       name: "SwiftUUIDV7GRDB",

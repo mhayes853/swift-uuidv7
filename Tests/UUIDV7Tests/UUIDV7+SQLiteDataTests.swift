@@ -140,16 +140,13 @@
       @Dependency(\.defaultDatabase) var database
 
       let string = UUIDV7().uuidString
-      let uuid = try await database.read { db in
-        try #require(
-          UUIDV7(
-            uuidString: DummyRow.select { _ in
-              SQLiteUUIDV7.fromText(string).toText()
-            }.fetchOne(db)!
-          )
-        )
+      let text = try await database.read { db in
+        try DummyRow.select { _ in
+          SQLiteUUIDV7.fromText(uuidString: string).map { $0.toText() }
+        }
+        .fetchOne(db)!
       }
-      #expect(uuid.uuidString == string)
+      #expect(text == string.lowercased())
     }
 
     @Test("Fails to Create UUIDV7 From Valid UUIDV4 String")
@@ -157,22 +154,43 @@
       @Dependency(\.defaultDatabase) var database
 
       let string = UUID().uuidString
-      let isNull = try await database.read { db in
-        try DummyRow.select { _ in
-          SQLiteUUIDV7.fromText(string).is(SQLQueryExpression<UUIDV7?>("NULL"))
-        }
-        .fetchOne(db)!
+      let uuid = try await database.read { db in
+        try DummyRow.select { _ in SQLiteUUIDV7.fromText(uuidString: string) }.fetchOne(db)!
       }
-      #expect(isNull)
+      #expect(uuid == nil)
     }
 
     @Test("Fails to Create UUIDV7 From Random String")
     func failsToCreateUUIDV7FromRandomString() async throws {
       @Dependency(\.defaultDatabase) var database
 
+      let uuid = try await database.read { db in
+        try DummyRow.select { _ in SQLiteUUIDV7.fromText(uuidString: "blob") }.fetchOne(db)!
+      }
+      #expect(uuid == nil)
+    }
+
+    @Test
+    func `Returns NULL When Parsing NULL Text`() async throws {
+      @Dependency(\.defaultDatabase) var database
+
+      let uuid = try await database.read { db in
+        try DummyRow.select { _ in
+          SQLiteUUIDV7.fromText(uuidString: SQLQueryExpression<String>("NULL"))
+        }
+        .fetchOne(db)!
+      }
+      #expect(uuid == nil)
+    }
+
+    @Test
+    func `Returns NULL When Converting UUIDV4 To Text`() async throws {
+      @Dependency(\.defaultDatabase) var database
+
       let isNull = try await database.read { db in
         try DummyRow.select { _ in
-          SQLiteUUIDV7.fromText("blob").is(SQLQueryExpression<UUIDV7?>("NULL"))
+          SQLiteUUIDV7.toText(SQLQueryExpression<UUIDV7>("\(UUID())"))
+            .is(SQLQueryExpression<String?>("NULL"))
         }
         .fetchOne(db)!
       }
@@ -218,7 +236,7 @@
     mutating func bootstrapDatabase() throws {
       var configuration = Configuration()
       configuration.prepareDatabase { db in
-        db.addUUIDV7Functions()
+        SQLiteUUIDV7.allFunctions.forEach { db.add(function: $0) }
       }
       let database = try SQLiteData.defaultDatabase(configuration: configuration)
       var migrator = DatabaseMigrator()
