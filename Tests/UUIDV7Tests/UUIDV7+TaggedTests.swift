@@ -1,7 +1,9 @@
 #if SwiftUUIDV7Tagged
   import UUIDV7
   import Tagged
-  import Foundation
+  #if SwiftUUIDV7Foundation && !SWIFT_UUIDV7_NO_FOUNDATION
+    import Foundation
+  #endif
   import Testing
 
   @Suite("UUIDV7+Tagged tests")
@@ -17,7 +19,7 @@
 
     @Test("From String Invalid")
     func fromStringInvalid() {
-      let uuid = Tagged<_TestTag, UUIDV7>(uuidString: UUID().uuidString)
+      let uuid = Tagged<_TestTag, UUIDV7>(uuidString: "00000000-0000-4000-8000-000000000000")
       #expect(uuid == nil)
     }
 
@@ -28,12 +30,14 @@
       #expect(uuid?.uuidString == string)
     }
 
-    @Test("From Date")
-    func fromDate() {
-      let date = Date(staticISO8601: "2024-09-09T22:41:15+0000")
-      let uuid = Tagged<_TestTag, UUIDV7>(date)
-      #expect(uuid.date == date)
-    }
+    #if SwiftUUIDV7Foundation && !SWIFT_UUIDV7_NO_FOUNDATION
+      @Test("From Date")
+      func fromDate() {
+        let date = Date(staticISO8601: "2024-09-09T22:41:15+0000")
+        let uuid = Tagged<_TestTag, UUIDV7>(date)
+        #expect(uuid.date == date)
+      }
+    #endif
   }
 
   private enum _TestTag {}

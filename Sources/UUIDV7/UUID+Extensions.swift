@@ -1,5 +1,9 @@
-#if canImport(Foundation)
-  import Foundation
+#if !SWIFT_UUIDV7_NO_FOUNDATION && (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
+  #if canImport(FoundationEssentials)
+    import FoundationEssentials
+  #else
+    import Foundation
+  #endif
 
   // MARK: - Constants
 
