@@ -50,6 +50,16 @@ jobs:
       - name: "Test Swift Package on Linux"
         run: swift test --configuration ${{ matrix.config }} --traits SwiftUUIDV7Tagged,SwiftUUIDV7StructuredQueries,SwiftUUIDV7Dependencies
 
+  foundation-free:
+    name: Without Foundation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Without Foundation
+        run: swift test --disable-default-traits
+      - name: Test Tagged Without Foundation
+        run: swift test --disable-default-traits --traits SwiftUUIDV7Tagged
+
   android:
     name: Android
     runs-on: ubuntu-latest

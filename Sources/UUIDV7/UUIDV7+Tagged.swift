@@ -1,6 +1,12 @@
 #if SwiftUUIDV7Tagged
   import Tagged
-  import Foundation
+  #if SwiftUUIDV7Foundation
+    #if canImport(FoundationEssentials)
+      import FoundationEssentials
+    #elseif canImport(Foundation)
+      import Foundation
+    #endif
+  #endif
 
   // MARK: - UUIDV7 Tagged
 
@@ -15,12 +21,14 @@
     /// Returns a tagged ``UUIDV7`` initialized to the current date and time.
     public static var now: Self { Self() }
 
-    /// Creates a tagged ``UUIDV7`` from a date.
-    ///
-    /// - Parameter date: The date to use for the UUIDV7.
-    public init(_ date: Date) {
-      self.init(UUIDV7(date))
-    }
+    #if SwiftUUIDV7Foundation && (canImport(FoundationEssentials) || canImport(Foundation))
+      /// Creates a tagged ``UUIDV7`` from a date.
+      ///
+      /// - Parameter date: The date to use for the UUIDV7.
+      public init(_ date: Date) {
+        self.init(UUIDV7(date))
+      }
+    #endif
 
     /// Creates a tagged ``UUIDV7`` from a string representation.
     ///

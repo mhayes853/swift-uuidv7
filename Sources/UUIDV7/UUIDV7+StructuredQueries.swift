@@ -1,5 +1,9 @@
 #if SwiftUUIDV7StructuredQueries
-  import Foundation
+  #if canImport(FoundationEssentials)
+    import FoundationEssentials
+  #elseif canImport(Foundation)
+    import Foundation
+  #endif
   import StructuredQueriesCore
   import StructuredQueriesSQLiteCore
 

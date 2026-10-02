@@ -1,6 +1,10 @@
 #if SwiftUUIDV7Dependencies
   import Dependencies
-  import Foundation
+  #if canImport(FoundationEssentials)
+    import FoundationEssentials
+  #elseif canImport(Foundation)
+    import Foundation
+  #endif
 
   // MARK: - Dependency Values
 

@@ -8,6 +8,11 @@ let package = Package(
   platforms: [.iOS(.v16), .macOS(.v13), .tvOS(.v16), .watchOS(.v9), .macCatalyst(.v16)],
   products: [.library(name: "UUIDV7", targets: ["UUIDV7"])],
   traits: [
+    .default(enabledTraits: ["SwiftUUIDV7Foundation"]),
+    .trait(
+      name: "SwiftUUIDV7Foundation",
+      description: "Adds Foundation UUID interoperability and Date conveniences to UUIDV7."
+    ),
     .trait(
       name: "SwiftUUIDV7Tagged",
       description: "Adds integrated swift-tagged support to the UUIDV7 type."
@@ -17,14 +22,16 @@ let package = Package(
       description: """
         Adds swift-structured-queries support and column representations to the UUIDV7 type, \
         and adds SQLite functions to generate, parse, and extract data from UUIDV7s.
-        """
+        """,
+      enabledTraits: ["SwiftUUIDV7Foundation"]
     ),
     .trait(
       name: "SwiftUUIDV7GRDB",
       description: """
         Conforms UUIDV7 to GRDB's DatabaseValueConvertible and StatementColumnConvertible \
         protocols, and adds database functions to generate, parse, and extract data from UUIDV7s.
-        """
+        """,
+      enabledTraits: ["SwiftUUIDV7Foundation"]
     ),
     .trait(
       name: "SwiftUUIDV7SQLiteData",
@@ -41,7 +48,8 @@ let package = Package(
         """
         Adds a dependency value to generate UUIDV7s, and interops the base UUID dependency with \
         UUIDV7 generation.
-        """
+        """,
+      enabledTraits: ["SwiftUUIDV7Foundation"]
     )
   ],
   dependencies: [
@@ -96,7 +104,8 @@ let package = Package(
           package: "sqlite-data",
           condition: .when(traits: ["SwiftUUIDV7SQLiteData"])
         )
-      ]
+      ],
+      swiftSettings: [.define("SWIFT_UUIDV7_NO_FOUNDATION")]
     ),
     .testTarget(
       name: "UUIDV7Tests",
