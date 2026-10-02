@@ -131,12 +131,12 @@ extension UUIDV7 {
   /// The 12 random bits that comprise of the `rand_a` field from RFC 9562 are replaced by a 12 bit
   /// counter as outlined by section 6.2 of the RFC.
   public init() {
-    self.init(systemNow: Self.platformTimeIntervalSince1970())
+    self.init(_systemNow: Self.platformTimeIntervalSince1970())
   }
 
-  private init(systemNow: TimeInterval) {
+  package init(_systemNow timeInterval: TimeInterval) {
     let (millis, sequence) = MonotonicityState.current.withLock {
-      $0.nextMillisWithSequence(timeIntervalSince1970: systemNow)
+      $0.nextMillisWithSequence(timeIntervalSince1970: timeInterval)
     }
     var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
     withUnsafePointer(to: sequence.bigEndian) { ptr in
@@ -152,7 +152,7 @@ extension UUIDV7 {
 #if (SwiftUUIDV7Foundation || !SWIFT_UUIDV7_NO_FOUNDATION) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7 {
     package init(_systemNow: Date) {
-      self.init(systemNow: _systemNow.timeIntervalSince1970)
+      self.init(_systemNow: _systemNow.timeIntervalSince1970)
     }
   }
 #endif
