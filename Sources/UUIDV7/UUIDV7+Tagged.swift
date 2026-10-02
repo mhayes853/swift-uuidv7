@@ -1,9 +1,9 @@
 #if SwiftUUIDV7Tagged
   import Tagged
-  #if SwiftUUIDV7Foundation && !SWIFT_UUIDV7_NO_FOUNDATION && (canImport(FoundationEssentials) || canImport(Foundation))
+  #if SwiftUUIDV7Foundation
     #if canImport(FoundationEssentials)
       import FoundationEssentials
-    #else
+    #elseif canImport(Foundation)
       import Foundation
     #endif
   #endif
@@ -21,7 +21,7 @@
     /// Returns a tagged ``UUIDV7`` initialized to the current date and time.
     public static var now: Self { Self() }
 
-    #if SwiftUUIDV7Foundation && !SWIFT_UUIDV7_NO_FOUNDATION && (canImport(FoundationEssentials) || canImport(Foundation))
+    #if SwiftUUIDV7Foundation && (canImport(FoundationEssentials) || canImport(Foundation))
       /// Creates a tagged ``UUIDV7`` from a date.
       ///
       /// - Parameter date: The date to use for the UUIDV7.

@@ -17,17 +17,17 @@
   #error("Unsupported platform")
 #endif
 
-// SwiftPM controls Foundation support through its trait. Standalone copies enable it
-// automatically unless SWIFT_UUIDV7_NO_FOUNDATION is defined.
-#if !SWIFT_UUIDV7_NO_FOUNDATION && (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
+// SwiftPM disables automatic Foundation support; its Foundation trait opts back in.
+// Standalone copies enable it unless SWIFT_UUIDV7_NO_FOUNDATION is defined.
+#if SwiftUUIDV7Foundation || !SWIFT_UUIDV7_NO_FOUNDATION
   #if canImport(FoundationEssentials)
     import FoundationEssentials
-  #else
+  #elseif canImport(Foundation)
     import Foundation
   #endif
 #endif
 
-#if !SWIFT_UUIDV7_NO_FOUNDATION && (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
+#if (SwiftUUIDV7Foundation || !SWIFT_UUIDV7_NO_FOUNDATION) && (canImport(FoundationEssentials) || canImport(Foundation))
   public typealias UUIDBytes = uuid_t
 #else
   public typealias UUIDBytes = (
@@ -71,7 +71,7 @@ public enum UUIDVariant: Hashable, Sendable {
 
 // MARK: - UUIDV7
 
-#if !SWIFT_UUIDV7_NO_FOUNDATION && (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
+#if (SwiftUUIDV7Foundation || !SWIFT_UUIDV7_NO_FOUNDATION) && (canImport(FoundationEssentials) || canImport(Foundation))
   @dynamicMemberLookup
 #endif
 public struct UUIDV7 {
@@ -106,7 +106,7 @@ extension UUIDV7 {
   }
 }
 
-#if !SWIFT_UUIDV7_NO_FOUNDATION && (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
+#if (SwiftUUIDV7Foundation || !SWIFT_UUIDV7_NO_FOUNDATION) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7 {
     /// The date embedded in this UUID.
     public var date: Date {
@@ -149,7 +149,7 @@ extension UUIDV7 {
   }
 }
 
-#if !SWIFT_UUIDV7_NO_FOUNDATION && (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
+#if (SwiftUUIDV7Foundation || !SWIFT_UUIDV7_NO_FOUNDATION) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7 {
     package init(_systemNow: Date) {
       self.init(systemNow: _systemNow.timeIntervalSince1970)
@@ -218,7 +218,7 @@ extension UUIDV7 {
 
 // MARK: - Convenience Initializers
 
-#if !SWIFT_UUIDV7_NO_FOUNDATION && (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
+#if (SwiftUUIDV7Foundation || !SWIFT_UUIDV7_NO_FOUNDATION) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7 {
     /// Creates a UUID with the specified `Date`.
     ///
@@ -248,7 +248,7 @@ extension UUIDV7 {
 #endif
 
 package func _negativeTimeStampMessage(_ timeInterval: TimeInterval) -> String {
-  #if !SWIFT_UUIDV7_NO_FOUNDATION && (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
+  #if (SwiftUUIDV7Foundation || !SWIFT_UUIDV7_NO_FOUNDATION) && (canImport(FoundationEssentials) || canImport(Foundation))
     let timeInterval = Date(timeIntervalSince1970: timeInterval)
   #endif
   return
@@ -264,7 +264,7 @@ extension UUIDV7 {
 
 // MARK: - Basic Initializers
 
-#if !SWIFT_UUIDV7_NO_FOUNDATION && (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
+#if (SwiftUUIDV7Foundation || !SWIFT_UUIDV7_NO_FOUNDATION) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7 {
     /// Attempts to create a ``UUIDV7`` from a Foundation UUID.
     ///
@@ -298,7 +298,7 @@ extension UUIDV7 {
 
 // MARK: - Dynamic Member Lookup
 
-#if !SWIFT_UUIDV7_NO_FOUNDATION && (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
+#if (SwiftUUIDV7Foundation || !SWIFT_UUIDV7_NO_FOUNDATION) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7 {
     public subscript<Value>(dynamicMember keyPath: KeyPath<UUID, Value>) -> Value {
       self.rawValue[keyPath: keyPath]
@@ -387,7 +387,7 @@ extension UUIDV7: Sendable {}
 
 // MARK: - RawRepresentable
 
-#if !SWIFT_UUIDV7_NO_FOUNDATION && (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
+#if (SwiftUUIDV7Foundation || !SWIFT_UUIDV7_NO_FOUNDATION) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7: RawRepresentable {
     /// This UUID as a Foundation UUID.
     public var rawValue: UUID {
@@ -404,7 +404,7 @@ extension UUIDV7: Sendable {}
 
 extension UUIDV7 {
   private static func platformTimeIntervalSince1970() -> TimeInterval {
-    #if !SWIFT_UUIDV7_NO_FOUNDATION && (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
+    #if (SwiftUUIDV7Foundation || !SWIFT_UUIDV7_NO_FOUNDATION) && (canImport(FoundationEssentials) || canImport(Foundation))
       Date().timeIntervalSince1970
     #elseif os(WASI)
       var timestamp: __wasi_timestamp_t = 0

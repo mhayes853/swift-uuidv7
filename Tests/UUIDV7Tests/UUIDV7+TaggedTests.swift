@@ -1,7 +1,7 @@
 #if SwiftUUIDV7Tagged
   import UUIDV7
   import Tagged
-  #if SwiftUUIDV7Foundation && !SWIFT_UUIDV7_NO_FOUNDATION
+  #if SwiftUUIDV7Foundation
     import Foundation
   #endif
   import Testing
@@ -30,7 +30,7 @@
       #expect(uuid?.uuidString == string)
     }
 
-    #if SwiftUUIDV7Foundation && !SWIFT_UUIDV7_NO_FOUNDATION
+    #if SwiftUUIDV7Foundation
       @Test("From Date")
       func fromDate() {
         let date = Date(staticISO8601: "2024-09-09T22:41:15+0000")
