@@ -94,11 +94,13 @@ Additionally, `UUIDV7` conforms to `EntityIdentifierConvertible` from AppIntents
 ### Standalone File
 If you do not want to add Swift UUIDV7 as a package dependency, you can copy the contents of [`Sources/UUIDV7/UUIDV7.swift`](./Sources/UUIDV7/UUIDV7.swift) directly into your project as a standalone file.
 
-To enable Foundation support, add `SWIFT_UUIDV7_FOUNDATION_AVAILABLE` to your target’s active compilation conditions.
-When available, `FoundationEssentials` is preferred over `Foundation`.
+Foundation support is enabled automatically when available, preferring `FoundationEssentials` over `Foundation`.
+No additional compilation conditions are required.
 
 ### Swift Package Manager / Xcode
 If you want integrations, package traits, and dependency-managed updates, add Swift UUIDV7 to your project as a package.
+
+Foundation support is controlled by the default `SwiftUUIDV7Foundation` trait. Disable default traits to use the core library without Foundation.
 
 > [https://github.com/mhayes853/swift-uuidv7](https://github.com/mhayes853/swift-uuidv7)
 
