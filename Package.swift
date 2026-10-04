@@ -104,8 +104,7 @@ let package = Package(
           package: "sqlite-data",
           condition: .when(traits: ["SwiftUUIDV7SQLiteData"])
         )
-      ],
-      swiftSettings: [.define("SWIFT_UUIDV7_NO_FOUNDATION")]
+      ]
     ),
     .testTarget(
       name: "UUIDV7Tests",
