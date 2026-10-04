@@ -1,6 +1,6 @@
 import Foundation
+import StandaloneUUIDV7
 import Testing
-import UUIDV7
 
 @Suite
 struct `Standalone UUIDV7 tests` {

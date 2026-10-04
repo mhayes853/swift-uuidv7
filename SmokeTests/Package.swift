@@ -6,8 +6,8 @@ let package = Package(
   name: "UUIDV7Standalone",
   platforms: [.macOS(.v13)],
   targets: [
-    .target(name: "UUIDV7"),
-    .testTarget(name: "UUIDV7Tests", dependencies: ["UUIDV7"])
+    .target(name: "StandaloneUUIDV7"),
+    .testTarget(name: "StandaloneUUIDV7Tests", dependencies: ["StandaloneUUIDV7"])
   ],
   swiftLanguageModes: [.v6]
 )
