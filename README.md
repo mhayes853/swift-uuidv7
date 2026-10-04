@@ -88,14 +88,19 @@ The library ships with UUID v7 support to popular libraries in the ecosystem, ea
   - Conforms UUIDV7 to `IdentifierStringConvertible` to make it compatible with CloudKit sync.
   - This trait also enables `SwiftUUIDV7GRDB` and `SwiftUUIDV7StructuredQueries`.
 
-Additionally, `UUIDV7` conforms to `EntityIdentifierConvertible` from AppIntents, which is available without a need to specify a trait when building for Apple platforms.
+Additionally, `UUIDV7` conforms to `EntityIdentifierConvertible` from AppIntents, which is available on Apple platforms when the default `SwiftUUIDV7Foundation` trait is enabled.
 
 ## Installation
 ### Standalone File
 If you do not want to add Swift UUIDV7 as a package dependency, you can copy the contents of [`Sources/UUIDV7/UUIDV7.swift`](./Sources/UUIDV7/UUIDV7.swift) directly into your project as a standalone file.
 
+Foundation support is enabled automatically when available, preferring `FoundationEssentials` over `Foundation`.
+No additional compilation conditions are required.
+
 ### Swift Package Manager / Xcode
 If you want integrations, package traits, and dependency-managed updates, add Swift UUIDV7 to your project as a package.
+
+Foundation support is controlled by the default `SwiftUUIDV7Foundation` trait. Disable default traits to use the core library without Foundation.
 
 > [https://github.com/mhayes853/swift-uuidv7](https://github.com/mhayes853/swift-uuidv7)
 

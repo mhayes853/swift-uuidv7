@@ -38,6 +38,8 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
       - name: Run ${{ matrix.config }} tests
         run: swift test --configuration ${{ matrix.config }} --enable-all-traits
+      - name: Test Copy-Paste Installation
+        run: swift test --package-path SmokeTests --configuration ${{ matrix.config }}
 
   linux:
     name: Linux
@@ -49,6 +51,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: "Test Swift Package on Linux"
         run: swift test --configuration ${{ matrix.config }} --traits SwiftUUIDV7Tagged,SwiftUUIDV7StructuredQueries,SwiftUUIDV7Dependencies
+      - name: Test Copy-Paste Installation
+        run: swift test --package-path SmokeTests --configuration ${{ matrix.config }}
+
+  foundation-free:
+    name: Without Foundation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Without Foundation
+        run: swift test --disable-default-traits
+      - name: Test Tagged Without Foundation
+        run: swift test --disable-default-traits --traits SwiftUUIDV7Tagged
 
   android:
     name: Android

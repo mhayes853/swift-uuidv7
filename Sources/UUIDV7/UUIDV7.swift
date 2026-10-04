@@ -17,11 +17,15 @@
   #error("Unsupported platform")
 #endif
 
-#if canImport(Foundation)
-  import Foundation
+#if !SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation
+  #if canImport(FoundationEssentials)
+    import FoundationEssentials
+  #elseif canImport(Foundation)
+    import Foundation
+  #endif
 #endif
 
-#if canImport(Foundation)
+#if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   public typealias UUIDBytes = uuid_t
 #else
   public typealias UUIDBytes = (
@@ -65,7 +69,7 @@ public enum UUIDVariant: Hashable, Sendable {
 
 // MARK: - UUIDV7
 
-#if canImport(Foundation)
+#if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   @dynamicMemberLookup
 #endif
 public struct UUIDV7 {
@@ -100,7 +104,7 @@ extension UUIDV7 {
   }
 }
 
-#if canImport(Foundation)
+#if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7 {
     /// The date embedded in this UUID.
     public var date: Date {
@@ -125,12 +129,12 @@ extension UUIDV7 {
   /// The 12 random bits that comprise of the `rand_a` field from RFC 9562 are replaced by a 12 bit
   /// counter as outlined by section 6.2 of the RFC.
   public init() {
-    self.init(systemNow: Self.platformTimeIntervalSince1970())
+    self.init(_systemNow: Self.platformTimeIntervalSince1970())
   }
 
-  private init(systemNow: TimeInterval) {
+  package init(_systemNow timeInterval: TimeInterval) {
     let (millis, sequence) = MonotonicityState.current.withLock {
-      $0.nextMillisWithSequence(timeIntervalSince1970: systemNow)
+      $0.nextMillisWithSequence(timeIntervalSince1970: timeInterval)
     }
     var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
     withUnsafePointer(to: sequence.bigEndian) { ptr in
@@ -143,10 +147,10 @@ extension UUIDV7 {
   }
 }
 
-#if canImport(Foundation)
+#if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7 {
     package init(_systemNow: Date) {
-      self.init(systemNow: _systemNow.timeIntervalSince1970)
+      self.init(_systemNow: _systemNow.timeIntervalSince1970)
     }
   }
 #endif
@@ -212,7 +216,7 @@ extension UUIDV7 {
 
 // MARK: - Convenience Initializers
 
-#if canImport(Foundation)
+#if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7 {
     /// Creates a UUID with the specified `Date`.
     ///
@@ -242,7 +246,7 @@ extension UUIDV7 {
 #endif
 
 package func _negativeTimeStampMessage(_ timeInterval: TimeInterval) -> String {
-  #if canImport(Foundation)
+  #if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
     let timeInterval = Date(timeIntervalSince1970: timeInterval)
   #endif
   return
@@ -258,14 +262,14 @@ extension UUIDV7 {
 
 // MARK: - Basic Initializers
 
-#if canImport(Foundation)
+#if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7 {
     /// Attempts to create a ``UUIDV7`` from a Foundation UUID.
     ///
     /// The Foundation UUID must be compliant with RFC 9562 UUID Version 7.
     ///
     /// - Parameter uuid: A Foundation UUID.
-    public init?(_ uuid: Foundation.UUID) {
+    public init?(_ uuid: UUID) {
       self.init(rawValue: uuid)
     }
   }
@@ -292,9 +296,9 @@ extension UUIDV7 {
 
 // MARK: - Dynamic Member Lookup
 
-#if canImport(Foundation)
+#if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7 {
-    public subscript<Value>(dynamicMember keyPath: KeyPath<Foundation.UUID, Value>) -> Value {
+    public subscript<Value>(dynamicMember keyPath: KeyPath<UUID, Value>) -> Value {
       self.rawValue[keyPath: keyPath]
     }
   }
@@ -353,6 +357,14 @@ extension UUIDV7: CustomReflectable {
 // MARK: - Comparable
 
 extension UUIDV7: Comparable {
+  public static func == (lhs: UUIDV7, rhs: UUIDV7) -> Bool {
+    withUnsafeBytes(of: lhs.uuid) { lhs in
+      withUnsafeBytes(of: rhs.uuid) { rhs in
+        lhs.elementsEqual(rhs)
+      }
+    }
+  }
+
   public static func < (lhs: UUIDV7, rhs: UUIDV7) -> Bool {
     withUnsafePointer(to: lhs) { lhs in
       withUnsafePointer(to: rhs) { rhs in
@@ -364,19 +376,23 @@ extension UUIDV7: Comparable {
 
 // MARK: - Basic Conformances
 
-extension UUIDV7: Hashable {}
+extension UUIDV7: Hashable {
+  public func hash(into hasher: inout Hasher) {
+    withUnsafeBytes(of: self.uuid) { hasher.combine(bytes: $0) }
+  }
+}
 extension UUIDV7: Sendable {}
 
 // MARK: - RawRepresentable
 
-#if canImport(Foundation)
+#if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   extension UUIDV7: RawRepresentable {
     /// This UUID as a Foundation UUID.
-    public var rawValue: Foundation.UUID {
+    public var rawValue: UUID {
       UUID(uuid: self.uuid)
     }
 
-    public init?(rawValue: Foundation.UUID) {
+    public init?(rawValue: UUID) {
       self.init(uuid: rawValue.uuid)
     }
   }
@@ -386,7 +402,7 @@ extension UUIDV7: Sendable {}
 
 extension UUIDV7 {
   private static func platformTimeIntervalSince1970() -> TimeInterval {
-    #if canImport(Foundation)
+    #if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
       Date().timeIntervalSince1970
     #elseif os(WASI)
       var timestamp: __wasi_timestamp_t = 0
