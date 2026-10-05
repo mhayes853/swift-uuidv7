@@ -1,6 +1,12 @@
-#if canImport(Foundation)
-  import Foundation
+#if SwiftUUIDV7Foundation
+  #if canImport(FoundationEssentials)
+    import FoundationEssentials
+  #elseif canImport(Foundation)
+    import Foundation
+  #endif
+#endif
 
+#if SwiftUUIDV7Foundation && (canImport(FoundationEssentials) || canImport(Foundation))
   // MARK: - Constants
 
   extension UUID {

@@ -1,4 +1,4 @@
-#if canImport(Foundation)
+#if SwiftUUIDV7Foundation && canImport(Foundation)
   import Foundation
   import Testing
   import UUIDV7

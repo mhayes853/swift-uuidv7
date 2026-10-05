@@ -1,6 +1,10 @@
 #if SwiftUUIDV7Dependencies
   import Dependencies
-  import Foundation
+  #if canImport(FoundationEssentials)
+    import FoundationEssentials
+  #elseif canImport(Foundation)
+    import Foundation
+  #endif
 
   // MARK: - Dependency Values
 
@@ -25,7 +29,7 @@
     ///   @Dependency(\.uuidv7) var uuid
     ///
     ///   func addButtonTapped() {
-    ///     todos.append(Todo(id: uuidv7()))
+    ///     todos.append(Todo(id: uuid()))
     ///   }
     /// }
     /// ```
@@ -49,7 +53,7 @@
     /// @Test
     /// func feature() {
     ///   let model = withDependencies {
-    ///     $0.uuid = .incrementing(from: 0)
+    ///     $0.uuidv7 = .incrementing(from: 0)
     ///   } operation: {
     ///     TodosModel()
     ///   }

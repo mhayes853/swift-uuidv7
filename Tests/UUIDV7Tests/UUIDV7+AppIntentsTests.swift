@@ -1,4 +1,4 @@
-#if canImport(AppIntents)
+#if SwiftUUIDV7Foundation && canImport(AppIntents)
   import UUIDV7
   import AppIntents
   import Testing

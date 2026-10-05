@@ -78,6 +78,7 @@ The library ships with UUID v7 support to popular libraries in the ecosystem, ea
   - **Trait:** `SwiftUUIDV7StructuredQueries`
   - Adds a `QueryBindable` conformance to `UUIDV7`.
   - Adds `UUIDV7.BytesRepresentation` and `UUIDV7.UppercaseRepresentation` column representations of `UUIDV7`.
+  - Adds `ScalarDatabaseFunction` instances for generating, parsing, and extracting properties from `UUIDV7`, and type-safe query expressions under the `SQLiteUUIDV7` namespace to call them.
 - [Dependencies](https://github.com/pointfreeco/swift-dependencies)
   - **Trait:** `SwiftUUIDV7Dependencies`
   - Adds a `UUIDV7Generator` dependency.
@@ -87,17 +88,22 @@ The library ships with UUID v7 support to popular libraries in the ecosystem, ea
   - Conforms UUIDV7 to `IdentifierStringConvertible` to make it compatible with CloudKit sync.
   - This trait also enables `SwiftUUIDV7GRDB` and `SwiftUUIDV7StructuredQueries`.
 
-Additionally, `UUIDV7` conforms to `EntityIdentifierConvertible` from AppIntents, which is available without a need to specify a trait when building for Apple platforms.
+Additionally, `UUIDV7` conforms to `EntityIdentifierConvertible` from AppIntents, which is available on Apple platforms when the default `SwiftUUIDV7Foundation` trait is enabled.
 
 ## Installation
 ### Standalone File
 If you do not want to add Swift UUIDV7 as a package dependency, you can copy the contents of [`Sources/UUIDV7/UUIDV7.swift`](./Sources/UUIDV7/UUIDV7.swift) directly into your project as a standalone file.
+
+Foundation support is enabled automatically when available, preferring `FoundationEssentials` over `Foundation`.
+No additional compilation conditions are required.
 
 > [!NOTE]
 > The standalone file always uses the portable Swift implementation. The package instead uses faster SIMD implementations for string conversions on 64-bit ARM (NEON), and on x86-64 CPUs that support AVX2.
 
 ### Swift Package Manager / Xcode
 If you want integrations, package traits, and dependency-managed updates, add Swift UUIDV7 to your project as a package.
+
+Foundation support is controlled by the default `SwiftUUIDV7Foundation` trait. Disable default traits to use the core library without Foundation.
 
 > [https://github.com/mhayes853/swift-uuidv7](https://github.com/mhayes853/swift-uuidv7)
 
