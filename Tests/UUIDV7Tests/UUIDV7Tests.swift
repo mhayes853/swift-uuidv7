@@ -386,6 +386,81 @@ struct `UUIDV7 tests` {
     }
   #endif
 
+  // NB: Spans are read outside of #expect, because Swift 6.2 can crash when compiling them inside.
+  #if compiler(>=6.2) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
+    @Test
+    func `Bytes Matches UUID Bytes`() {
+      let uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
+      let expected = withUnsafeBytes(of: uuid.uuid) { [UInt8]($0) }
+      let bytes = byteArray(uuid.bytes)
+      #expect(bytes == expected)
+    }
+
+    @Test
+    func `Bytes Of UUIDs In An Array`() {
+      let uuids = (0..<8).map { UUIDV7(timeIntervalSince1970: 1_000, UInt32($0)) }
+      let expected = uuids.map { uuid in withUnsafeBytes(of: uuid.uuid) { [UInt8]($0) } }
+      let bytes = uuids.map { byteArray($0.bytes) }
+      #expect(bytes == expected)
+    }
+
+    @Test
+    func `From Bytes Round Trips`() {
+      let uuid = UUIDV7()
+      let copy = UUIDV7(copying: uuid.bytes)
+      #expect(copy == uuid)
+    }
+
+    @Test
+    func `Reading Mutable Bytes`() {
+      let uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
+      let byteCount = uuid.mutableBytes.byteCount
+      let bytes = byteArray(uuid.mutableBytes.bytes)
+      let expected = byteArray(uuid.bytes)
+      #expect(byteCount == 16)
+      #expect(bytes == expected)
+    }
+
+    @Test
+    func `Mutating Bytes In Place`() {
+      var uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
+      uuid.mutableBytes.storeBytes(of: 0xAB, toByteOffset: 15, as: UInt8.self)
+      #expect(uuid.uuid.15 == 0xAB)
+      #expect(uuid.timeIntervalSince1970 == 1_000)
+    }
+
+    @Test
+    func `Mutating Bytes Through An Inout Parameter`() {
+      func overwriteRandomBytes(_ bytes: inout MutableRawSpan) {
+        for offset in 10..<16 {
+          bytes.storeBytes(of: 0xCD, toByteOffset: offset, as: UInt8.self)
+        }
+      }
+      var uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
+      overwriteRandomBytes(&uuid.mutableBytes)
+      #expect(uuid.uuidString.hasSuffix("CDCDCDCDCDCD"))
+      #expect(UUIDV7(uuid: uuid.uuid) == uuid)
+    }
+
+    @Test
+    func `Mutating Bytes Rethrows Errors`() {
+      struct SomeError: Error {}
+      func fail(_ bytes: inout MutableRawSpan) throws(SomeError) {
+        bytes.storeBytes(of: 0xEF, toByteOffset: 15, as: UInt8.self)
+        throw SomeError()
+      }
+      var uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
+      #expect(throws: SomeError.self) {
+        try fail(&uuid.mutableBytes)
+      }
+      #expect(uuid.uuid.15 == 0xEF)
+    }
+
+    private func byteArray(_ bytes: RawSpan) -> [UInt8] {
+      bytes.withUnsafeBytes { [UInt8]($0) }
+    }
+  #endif
+
   @Test
   func `Negative Time Interval Message Mentions The Timestamp`() {
     let message = _negativeTimeStampMessage(-1000)
@@ -436,6 +511,37 @@ struct `UUIDV7 tests` {
         _ = UUIDV7 { $0.append(UInt8(0)) }
       }
     }
+
+    #if hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
+      @Test
+      func `Exits When Mutated Bytes Change The Version`() async {
+        await #expect(processExitsWith: .failure) {
+          var uuid = UUIDV7()
+          uuid.mutableBytes.storeBytes(of: 0x40, toByteOffset: 6, as: UInt8.self)
+        }
+      }
+
+      @Test
+      func `Exits When Mutated Bytes Change The Variant`() async {
+        await #expect(processExitsWith: .failure) {
+          var uuid = UUIDV7()
+          uuid.mutableBytes.storeBytes(of: 0xC0, toByteOffset: 8, as: UInt8.self)
+        }
+      }
+
+      @Test
+      func `Exits When Mutated Bytes Are Invalid And An Error Is Thrown`() async {
+        await #expect(processExitsWith: .failure) {
+          struct SomeError: Error {}
+          func fail(_ bytes: inout MutableRawSpan) throws(SomeError) {
+            bytes.storeBytes(of: 0x40, toByteOffset: 6, as: UInt8.self)
+            throw SomeError()
+          }
+          var uuid = UUIDV7()
+          try? fail(&uuid.mutableBytes)
+        }
+      }
+    #endif
   #endif
 
   #if SwiftUUIDV7Foundation && canImport(Foundation)

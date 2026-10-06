@@ -25,6 +25,10 @@
   #endif
 #endif
 
+#if compiler(>=6.2) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
+  import Builtin
+#endif
+
 #if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   public typealias UUIDBytes = uuid_t
 #else
@@ -70,9 +74,12 @@ public enum UUIDVariant: Hashable, Sendable {
 #if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   @dynamicMemberLookup
 #endif
+#if compiler(>=6.2) && hasFeature(AddressableTypes)
+  @_addressableForDependencies
+#endif
 public struct UUIDV7 {
   /// The raw ``UUIDBytes`` of this UUID.
-  public let uuid: UUIDBytes
+  public private(set) var uuid: UUIDBytes
 
   /// Creates a UUID from the specified bytes.
   ///
@@ -459,6 +466,63 @@ extension UUIDV7 {
         _ = output.finalize(for: buffer)
       }
       self.init(uuid: bytes)
+    }
+  }
+#endif
+
+// MARK: - Bytes
+
+#if compiler(>=6.2) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
+  extension UUIDV7 {
+    /// A `RawSpan` view of this UUID's 16 bytes.
+    public var bytes: RawSpan {
+      @_lifetime(borrow self)
+      borrowing get {
+        let pointer = UnsafeRawPointer(Builtin.addressOfBorrow(self))
+        let span = RawSpan(_unsafeStart: pointer, byteCount: MemoryLayout<UUIDBytes>.size)
+        return _overrideLifetime(span, borrowing: self)
+      }
+    }
+
+    /// A `MutableRawSpan` view of this UUID's 16 bytes.
+    ///
+    /// Mutate the bytes in place, either through a method on this property, or by passing
+    /// `&uuid.mutableBytes` to a function. The span cannot be stored in a variable, because this
+    /// UUID is validated at the end of every mutation.
+    ///
+    /// - Precondition: The mutated bytes must be compliant with RFC 9562 UUID Version 7.
+    public var mutableBytes: MutableRawSpan {
+      _read {
+        yield self.mutableBytesForReading()
+      }
+      _modify {
+        defer { self.validateMutatedBytes() }
+        var span = self.mutableBytesForWriting()
+        yield &span
+      }
+    }
+
+    @_lifetime(borrow self)
+    private borrowing func mutableBytesForReading() -> MutableRawSpan {
+      let pointer = UnsafeMutableRawPointer(
+        mutating: UnsafeRawPointer(Builtin.addressOfBorrow(self))
+      )
+      let span = MutableRawSpan(_unsafeStart: pointer, byteCount: MemoryLayout<UUIDBytes>.size)
+      return _overrideLifetime(span, borrowing: self)
+    }
+
+    @_lifetime(&self)
+    private mutating func mutableBytesForWriting() -> MutableRawSpan {
+      let pointer = UnsafeMutableRawPointer(Builtin.addressof(&self))
+      let span = MutableRawSpan(_unsafeStart: pointer, byteCount: MemoryLayout<UUIDBytes>.size)
+      return _overrideLifetime(span, mutating: &self)
+    }
+
+    private func validateMutatedBytes() {
+      precondition(
+        Self(uuid: self.uuid) != nil,
+        "The mutated bytes of a UUIDV7 must be compliant with RFC 9562 UUID Version 7."
+      )
     }
   }
 #endif
