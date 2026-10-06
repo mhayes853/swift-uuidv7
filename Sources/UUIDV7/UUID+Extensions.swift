@@ -11,9 +11,16 @@
 
   extension UUID {
     /// A nil UUID defined by RFC 9562.
-    public static let `nil` = Self(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+    @_disfavoredOverload
+    @available(*, deprecated, renamed: "min")
+    public static let `nil` = Self.min
+
+    /// The min UUID, also known as the nil UUID defined by RFC 9562, where all bits are zero.
+    @_disfavoredOverload
+    public static let min = Self(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
 
     /// A max UUID defined by RFC 9562.
+    @_disfavoredOverload
     public static let max = Self(
       uuid: (
         0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -26,15 +33,18 @@
 
   extension UUID {
     /// The version number of this UUID as defined by RFC 9562.
+    @_disfavoredOverload
     public var version: Int {
       Int(self.uuid.6 >> 4)
     }
   }
 
-  // MARK: - Varian
+  // MARK: - Variant
 
   extension UUID {
     /// The variant of this UUID as defined by RFC 9562.
+    @_disfavoredOverload
+    @available(*, deprecated, message: "Use UUIDVariant(uuid:) instead.")
     public var variant: UUIDVariant {
       UUIDVariant(uuid: self.uuid)
     }

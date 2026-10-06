@@ -8,7 +8,7 @@
     @Test(
       "Version",
       arguments: [
-        (UUID.nil, 0x00),
+        (UUID.min, 0x00),
         (UUID(uuidString: "000003e8-612d-11f0-9f00-325096b39f47")!, 0x01),
         (UUID(uuidString: "000003e8-612d-21f0-9f00-325096b39f47")!, 0x02),
         (UUID(uuidString: "000003e8-612d-31f0-9f00-325096b39f47")!, 0x03),
@@ -24,7 +24,7 @@
         (UUID(uuidString: "000003e8-612d-d1f0-9f00-325096b39f47")!, 0x0D),
         (UUID(uuidString: "000003e8-612d-e1f0-9f00-325096b39f47")!, 0x0E),
         (UUID.max, 0x0F)
-      ]
+      ] as [(UUID, Int)]
     )
     func version(uuid: UUID, version: Int) {
       #expect(uuid.version == version)
@@ -38,12 +38,18 @@
         (UUID(uuidString: "550e8400-e29b-41d4-a716-446655440000")!, UUIDVariant.rfc9562),
         (UUID(uuidString: "f9168c5e-ceb2-4faa-d6bf-329bf39fa1e4")!, UUIDVariant.microsoft),
         (UUID(uuidString: "f81d4fae-7dec-11d0-7765-00a0c91e6bf6")!, UUIDVariant.ncs),
-        (UUID.nil, UUIDVariant.ncs),
+        (UUID.min, UUIDVariant.ncs),
         (UUID.max, UUIDVariant.future)
       ]
     )
     func variant(uuid: UUID, variant: UUIDVariant) {
-      #expect(uuid.variant == variant)
+      #expect(UUIDVariant(uuid: uuid.uuid) == variant)
+    }
+
+    @Test("Min And Max")
+    func minAndMax() {
+      #expect(UUID.min.uuidString == "00000000-0000-0000-0000-000000000000")
+      #expect(UUID.max.uuidString == "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")
     }
   }
 #endif

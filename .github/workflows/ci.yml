@@ -54,6 +54,15 @@ jobs:
       - name: Test Copy-Paste Installation
         run: swift test --package-path SmokeTests --configuration ${{ matrix.config }}
 
+  linux-nightly:
+    name: Linux (Nightly Toolchain)
+    runs-on: ubuntu-latest
+    container: swiftlang/swift:nightly-main-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Test Swift Package With The Latest Foundation"
+        run: swift test
+
   foundation-free:
     name: Without Foundation
     runs-on: ubuntu-latest
