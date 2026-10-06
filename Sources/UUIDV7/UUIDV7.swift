@@ -291,7 +291,9 @@ extension UUIDV7 {
 extension UUIDV7 {
   /// Attempts to create a ``UUIDV7`` from a UUID String.
   ///
-  /// The UUID String must be compliant with RFC 9562 UUID Version 7.
+  /// The UUID String must be compliant with RFC 9562 UUID Version 7, and must have the 36 character
+  /// hyphenated form, such as “019B1FC9-11AE-7850-99CA-C24474C79EA9”. Hex digits may be uppercase
+  /// or lowercase.
   ///
   /// - Parameter uuidString: A UUID String.
   public init?(uuidString: String) {
@@ -413,22 +415,21 @@ extension UUIDV7: Sendable {}
 
 extension UUIDV7 {
   private static func platformTimeIntervalSince1970() -> TimeInterval {
-    #if !os(Windows) && !os(WASI)
-      // NB: This is roughly twice as fast as Date(), which reads the same clock.
-      var time = timespec()
-      clock_gettime(CLOCK_REALTIME, &time)
-      return TimeInterval(time.tv_sec) + TimeInterval(time.tv_nsec) / 1_000_000_000
-    #elseif (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
-      Date().timeIntervalSince1970
-    #elseif os(WASI)
-      var timestamp: __wasi_timestamp_t = 0
-      _ = __wasi_clock_time_get(__WASI_CLOCKID_REALTIME, 1_000_000, &timestamp)
-      return TimeInterval(timestamp) / 1_000_000_000
-    #elseif os(Windows)
+    #if os(Windows)
       var fileTime = FILETIME()
       GetSystemTimePreciseAsFileTime(&fileTime)
       let ticks = (UInt64(fileTime.dwHighDateTime) << 32) | UInt64(fileTime.dwLowDateTime)
       return TimeInterval(ticks) / 10_000_000 - 11_644_473_600
+    #elseif os(WASI)
+      // NB: Swift can't import __WASI_CLOCKID_REALTIME, which is 0.
+      var timestamp: __wasi_timestamp_t = 0
+      _ = __wasi_clock_time_get(0, 1_000_000, &timestamp)
+      return TimeInterval(timestamp) / 1_000_000_000
+    #else
+      // NB: This is roughly twice as fast as Date(), which reads the same clock.
+      var time = timespec()
+      clock_gettime(CLOCK_REALTIME, &time)
+      return TimeInterval(time.tv_sec) + TimeInterval(time.tv_nsec) / 1_000_000_000
     #endif
   }
 }
@@ -437,6 +438,7 @@ extension UUIDV7 {
 
 extension UUIDV7 {
   private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
+    guard uuidString.utf8.count == 36 else { return nil }
     // NB: Bridged strings may not store contiguous UTF-8, so they're copied into native strings.
     if let bytes = uuidString.utf8.withContiguousStorageIfAvailable(Self.uuidBytes(fromUTF8:)) {
       return bytes
@@ -448,9 +450,10 @@ extension UUIDV7 {
 
 #if canImport(CUUIDV7) && (arch(arm64) || arch(x86_64)) && !os(Windows)
   extension UUIDV7 {
+    /// Decodes the 36 UTF-8 bytes of a UUID string.
     private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
       guard uuidv7_is_supported() else { return Self.portableUUIDBytes(fromUTF8: utf8) }
-      let result = uuidv7_decode(utf8.baseAddress, utf8.count)
+      let result = uuidv7_decode(utf8.baseAddress!)
       return result.is_valid ? unsafeBitCast(result.bytes.words, to: UUIDBytes.self) : nil
     }
 
@@ -465,6 +468,7 @@ extension UUIDV7 {
   }
 #else
   extension UUIDV7 {
+    /// Decodes the 36 UTF-8 bytes of a UUID string.
     private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
       Self.portableUUIDBytes(fromUTF8: utf8)
     }
@@ -483,35 +487,19 @@ extension UUIDV7 {
   private static let highBits = UInt64(0x8080_8080_8080_8080)
 
   private static func portableUUIDBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
-    guard let string = utf8.baseAddress.map(UnsafeRawPointer.init) else { return nil }
-    switch utf8.count {
-    case 36:
-      guard
-        utf8[8] == Self.hyphen, utf8[13] == Self.hyphen, utf8[18] == Self.hyphen,
-        utf8[23] == Self.hyphen
-      else { return nil }
-      return Self.uuidBytes(
-        fromHexDigits: (
-          Self.characters(string, at: 0),
-          Self.characters(string, at: 9, and: 14),
-          Self.characters(string, at: 19, and: 24),
-          Self.characters(string, at: 28)
-        )
+    guard
+      let string = utf8.baseAddress.map(UnsafeRawPointer.init),
+      utf8[8] == Self.hyphen, utf8[13] == Self.hyphen, utf8[18] == Self.hyphen,
+      utf8[23] == Self.hyphen
+    else { return nil }
+    return Self.uuidBytes(
+      fromHexDigits: (
+        Self.characters(string, at: 0),
+        Self.characters(string, at: 9, and: 14),
+        Self.characters(string, at: 19, and: 24),
+        Self.characters(string, at: 28)
       )
-    case 32:
-      return Self.uuidBytes(
-        fromHexDigits: (
-          Self.characters(string, at: 0),
-          Self.characters(string, at: 8),
-          Self.characters(string, at: 16),
-          Self.characters(string, at: 24)
-        )
-      )
-    case 33...35:
-      return Self.uuidBytes(fromIrregular: utf8)
-    default:
-      return nil
-    }
+    )
   }
 
   /// Loads 8 characters, with the first character in the lowest byte.
@@ -565,37 +553,6 @@ extension UUIDV7 {
     var bytes = ((values << 4) | (values >> 8)) & 0x00FF_00FF_00FF_00FF
     bytes = (bytes | (bytes >> 8)) & 0x0000_FFFF_0000_FFFF
     return UInt32(truncatingIfNeeded: bytes | (bytes >> 16))
-  }
-
-  private static func uuidBytes(fromIrregular utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
-    var bytes: UUIDBytes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-    let isValid = withUnsafeMutableBytes(of: &bytes) { bytes in
-      var nibbleCount = 0
-      for (index, character) in utf8.enumerated() {
-        if character == Self.hyphen {
-          guard index == 8 || index == 13 || index == 18 || index == 23 else { return false }
-          continue
-        }
-        guard let value = Self.hexValue(character), nibbleCount < 32 else { return false }
-        bytes[nibbleCount / 2] |= nibbleCount.isMultiple(of: 2) ? value << 4 : value
-        nibbleCount += 1
-      }
-      return nibbleCount == 32
-    }
-    return isValid ? bytes : nil
-  }
-
-  private static let numericRange = UInt8(48)...57
-  private static let uppercaseRange = UInt8(65)...70
-  private static let lowercaseRange = UInt8(97)...102
-
-  private static func hexValue(_ character: UInt8) -> UInt8? {
-    switch character {
-    case numericRange: character &- 48
-    case uppercaseRange: character &- 55
-    case lowercaseRange: character &- 87
-    default: nil
-    }
   }
 
   private static func portableString(from bytes: UUIDBytes) -> String {
