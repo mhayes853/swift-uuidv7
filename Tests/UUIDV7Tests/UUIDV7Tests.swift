@@ -288,6 +288,16 @@ struct `UUIDV7 tests` {
   }
 
   @Test
+  func `Clamping Offset Does Not Trap Before 1970`() {
+    let offset = Duration.seconds(-UUIDV7._platformTimeIntervalSince1970() - 1_000)
+    var generator = SplitMix64(seed: 42)
+    let u1 = UUIDV7(_clampingOffset: offset)
+    let u2 = UUIDV7(_clampingOffset: offset, using: &generator)
+    #expect(u1.timeIntervalSince1970 >= 0)
+    #expect(u2.timeIntervalSince1970 >= 0)
+  }
+
+  @Test
   func `UUIDs With The Same Offset Are Monotonically Increasing`() {
     let now = UUIDV7._platformTimeIntervalSince1970()
     var u1 = UUIDV7(_systemNow: now, offset: .seconds(-60))
@@ -666,7 +676,7 @@ private func uuidBytes(_ bytes: [UInt8]) -> UUIDBytes {
   )
 }
 
-private struct SplitMix64: RandomNumberGenerator, Hashable, Sendable {
+struct SplitMix64: RandomNumberGenerator, Hashable, Sendable {
   private var state: UInt64
 
   init(seed: UInt64) {

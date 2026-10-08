@@ -99,12 +99,16 @@ public struct UUIDV7 {
 extension UUIDV7 {
   /// The timestamp embedded in this UUID.
   public var timeIntervalSince1970: TimeInterval {
-    let t1 = UInt64(self.uuid.0) << 40
-    let t2 = UInt64(self.uuid.1) << 32
-    let t3 = UInt64(self.uuid.2) << 24
-    let t4 = UInt64(self.uuid.3) << 16
-    let t5 = UInt64(self.uuid.4) << 8
-    let t6 = UInt64(self.uuid.5)
+    Self._timeIntervalSince1970(self.uuid)
+  }
+
+  package static func _timeIntervalSince1970(_ uuid: UUIDBytes) -> TimeInterval {
+    let t1 = UInt64(uuid.0) << 40
+    let t2 = UInt64(uuid.1) << 32
+    let t3 = UInt64(uuid.2) << 24
+    let t4 = UInt64(uuid.3) << 16
+    let t5 = UInt64(uuid.4) << 8
+    let t6 = UInt64(uuid.5)
     return TimeInterval(t1 | t2 | t3 | t4 | t5 | t6) / 1000
   }
 }
@@ -172,13 +176,31 @@ extension UUIDV7 {
     self.init(timeInterval, offset, &bytes)
   }
 
-  private init(_ systemTimeInterval: TimeInterval, _ offset: Duration, _ bytes: inout UUIDBytes) {
+  package init(_clampingOffset offset: Duration) {
+    var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
+    self.init(Self._platformTimeIntervalSince1970(), offset, &bytes, clampsToEpoch: true)
+  }
+
+  package init(
+    _clampingOffset offset: Duration,
+    using generator: inout some RandomNumberGenerator
+  ) {
+    var bytes = Self.randomBytes(using: &generator)
+    self.init(Self._platformTimeIntervalSince1970(), offset, &bytes, clampsToEpoch: true)
+  }
+
+  private init(
+    _ systemTimeInterval: TimeInterval,
+    _ offset: Duration,
+    _ bytes: inout UUIDBytes,
+    clampsToEpoch: Bool = false
+  ) {
     let (millis, sequence) = MonotonicityState.current.withLock {
       $0.nextMillisWithSequence(timeIntervalSince1970: systemTimeInterval)
     }
     let timestampMillis = Int64(millis) + offset.uuidV7Milliseconds
     precondition(
-      timestampMillis >= 0,
+      clampsToEpoch || timestampMillis >= 0,
       _negativeTimeStampMessage(TimeInterval(timestampMillis) / 1000)
     )
     withUnsafePointer(to: sequence.bigEndian) { ptr in
@@ -187,7 +209,7 @@ extension UUIDV7 {
         bytes.7 = $0.pointee.1
       }
     }
-    self.init(UInt64(timestampMillis), &bytes)
+    self.init(UInt64(Swift.max(0, timestampMillis)), &bytes)
   }
 }
 
@@ -438,11 +460,7 @@ extension UUIDV7 {
     /// - Precondition: `bytes.byteCount` must be exactly 16.
     /// - Parameter bytes: The bytes to copy.
     public init?(copying bytes: RawSpan) {
-      precondition(
-        bytes.byteCount == MemoryLayout<UUIDBytes>.size,
-        "UUIDV7 requires exactly 16 bytes, but \(bytes.byteCount) were provided."
-      )
-      self.init(uuid: bytes.withUnsafeBytes { $0.loadUnaligned(as: UUIDBytes.self) })
+      self.init(uuid: Self._uuidBytes(copying: bytes))
     }
 
     /// Attempts to create a ``UUIDV7`` by filling its 16 bytes using a closure that writes into an
@@ -455,17 +473,31 @@ extension UUIDV7 {
     public init?<E: Error>(
       initializingWith initializer: (inout OutputRawSpan) throws(E) -> Void
     ) throws(E) {
+      try self.init(uuid: Self._uuidBytes(initializingWith: initializer))
+    }
+
+    package static func _uuidBytes(copying bytes: RawSpan) -> UUIDBytes {
+      precondition(
+        bytes.byteCount == MemoryLayout<UUIDBytes>.size,
+        "A UUID requires exactly 16 bytes, but \(bytes.byteCount) were provided."
+      )
+      return bytes.withUnsafeBytes { $0.loadUnaligned(as: UUIDBytes.self) }
+    }
+
+    package static func _uuidBytes<E: Error>(
+      initializingWith initializer: (inout OutputRawSpan) throws(E) -> Void
+    ) throws(E) -> UUIDBytes {
       var bytes = Self.nilUUIDBytes
       try withUnsafeMutableBytes(of: &bytes) { buffer throws(E) in
         var output = OutputRawSpan(buffer: buffer, initializedCount: 0)
         try initializer(&output)
         precondition(
           output.byteCount == MemoryLayout<UUIDBytes>.size,
-          "UUIDV7 requires exactly 16 bytes, but \(output.byteCount) were provided."
+          "A UUID requires exactly 16 bytes, but \(output.byteCount) were provided."
         )
         _ = output.finalize(for: buffer)
       }
-      self.init(uuid: bytes)
+      return bytes
     }
   }
 #endif
@@ -542,13 +574,13 @@ extension UUIDV7 {
 
   /// Returns a string created from the UUID, such as “019B1FC9-11AE-7850-99CA-C24474C79EA9”.
   public var uuidString: String {
-    self.string(hexDigits: Self.uppercaseHexDigits)
+    Self._uuidString(self.uuid, lowercased: false)
   }
 
   /// Returns a lowercase string created from the UUID, such as
   /// “019b1fc9-11ae-7850-99ca-c24474c79ea9”.
   public var lowercasedUUIDString: String {
-    self.string(hexDigits: Self.lowercaseHexDigits)
+    Self._uuidString(self.uuid, lowercased: true)
   }
 }
 
@@ -721,8 +753,9 @@ extension UUIDV7 {
 
   private static let hyphenPositions = Set([8, 12, 16, 20])
 
-  private func string(hexDigits: [Character]) -> String {
-    withUnsafeBytes(of: self.uuid) { rawBytes in
+  package static func _uuidString(_ uuid: UUIDBytes, lowercased: Bool) -> String {
+    let hexDigits = lowercased ? Self.lowercaseHexDigits : Self.uppercaseHexDigits
+    return withUnsafeBytes(of: uuid) { rawBytes in
       var output = ""
       output.reserveCapacity(36)
 
@@ -744,7 +777,7 @@ extension UUIDV7 {
     }
   }
 
-  private static func randomBytes(using generator: inout some RandomNumberGenerator) -> UUIDBytes {
+  package static func randomBytes(using generator: inout some RandomNumberGenerator) -> UUIDBytes {
     let high = UInt64.random(in: .min ... .max, using: &generator)
     let low = UInt64.random(in: .min ... .max, using: &generator)
     return unsafeBitCast((high.bigEndian, low.bigEndian), to: UUIDBytes.self)
@@ -767,7 +800,7 @@ extension UUIDV7 {
 // MARK: - Duration Helpers
 
 extension Duration {
-  fileprivate var uuidV7TimeInterval: TimeInterval {
+  package var uuidV7TimeInterval: TimeInterval {
     let (seconds, attoseconds) = self.components
     return TimeInterval(seconds) + TimeInterval(attoseconds) / 1_000_000_000_000_000_000
   }
