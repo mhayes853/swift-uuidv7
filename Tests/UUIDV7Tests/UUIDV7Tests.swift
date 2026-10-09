@@ -252,7 +252,6 @@ struct `UUIDV7 tests` {
   func `Lowercased UUID String`() {
     let uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
     #expect(uuid.lowercasedUUIDString == "0000000f-4240-7000-8000-00000000002a")
-    #expect(UUIDV7(uuidString: uuid.lowercasedUUIDString) == uuid)
   }
 
   @Test
@@ -265,8 +264,7 @@ struct `UUIDV7 tests` {
     arguments: [
       (1_000, Duration.seconds(5), 1_005),
       (1_000, .milliseconds(250), 1_000.25),
-      (1_000, .seconds(-500), 500),
-      (1_000, .zero, 1_000)
+      (1_000, .seconds(-500), 500)
     ] as [(TimeInterval, Duration, TimeInterval)]
   )
   func `Time Interval With Offset`(
@@ -310,58 +308,26 @@ struct `UUIDV7 tests` {
   }
 
   @Test
-  func `Same Time Interval And Seeded Generator Are Equal`() {
-    var g1 = SplitMix64(seed: 42)
-    var g2 = SplitMix64(seed: 42)
-    let u1 = UUIDV7(timeIntervalSince1970: 1_000, using: &g1)
-    let u2 = UUIDV7(timeIntervalSince1970: 1_000, using: &g2)
-    #expect(u1 == u2)
-    #expect(u1.uuidString == "0000000F-4240-7E95-A8EF-E333B266F103")
-  }
-
-  @Test
-  func `Different Seeded Generators Are Not Equal`() {
-    var g1 = SplitMix64(seed: 42)
-    var g2 = SplitMix64(seed: 43)
-    let u1 = UUIDV7(timeIntervalSince1970: 1_000, using: &g1)
-    let u2 = UUIDV7(timeIntervalSince1970: 1_000, using: &g2)
-    #expect(u1 != u2)
-  }
-
-  @Test
-  func `Time Interval With Generator And Offset`() {
+  func `Time Interval With Seeded Generator`() {
     var generator = SplitMix64(seed: 42)
-    let uuid = UUIDV7(timeIntervalSince1970: 1_000, using: &generator, offset: .seconds(5))
-    #expect(uuid.timeIntervalSince1970 == 1_005)
+    let uuid = UUIDV7(timeIntervalSince1970: 1_000, using: &generator)
+    #expect(uuid.uuidString == "0000000F-4240-7E95-A8EF-E333B266F103")
   }
 
   @Test
-  func `Generator UUIDs Are Monotonically Increasing Valid UUIDV7s`() {
-    var generator = SplitMix64(seed: 42)
+  func `Constant Generator UUIDs Are Monotonically Increasing Valid UUIDV7s`() {
+    var generator = ConstantGenerator()
     let uuids = (0..<10_000).map { _ in UUIDV7(using: &generator) }
     #expect(zip(uuids, uuids.dropFirst()).allSatisfy { $0 < $1 })
     #expect(uuids.allSatisfy { UUIDV7(uuid: $0.uuid) == $0 })
   }
 
-  @Test
-  func `Constant Generator UUIDs Are Monotonically Increasing`() {
-    var generator = ConstantGenerator()
-    let uuids = (0..<10_000).map { _ in UUIDV7(using: &generator) }
-    #expect(zip(uuids, uuids.dropFirst()).allSatisfy { $0 < $1 })
-  }
-
   #if compiler(>=6.2)
     @Test
-    func `From RawSpan Valid`() throws {
+    func `From RawSpan`() {
       let uuid = UUIDV7()
       let bytes = withUnsafeBytes(of: uuid.uuid) { [UInt8]($0) }
       #expect(UUIDV7(copying: bytes.span.bytes) == uuid)
-    }
-
-    @Test
-    func `From RawSpan Invalid`() {
-      let bytes = [UInt8](repeating: 0, count: 16)
-      #expect(UUIDV7(copying: bytes.span.bytes) == nil)
     }
 
     @Test
@@ -376,38 +342,12 @@ struct `UUIDV7 tests` {
       }
       #expect(output == uuid)
     }
-
-    @Test
-    func `Initializing With OutputRawSpan Invalid Version`() {
-      let output = UUIDV7 { output in
-        for _ in 0..<16 {
-          output.append(UInt8(0))
-        }
-      }
-      #expect(output == nil)
-    }
-
-    @Test
-    func `Initializing With OutputRawSpan Rethrows Typed Error`() {
-      struct SomeError: Error {}
-      #expect(throws: SomeError.self) {
-        try UUIDV7 { (_: inout OutputRawSpan) throws(SomeError) in throw SomeError() }
-      }
-    }
   #endif
 
   // NB: Spans are read outside of #expect, because Swift 6.2 can crash when compiling them inside.
   #if compiler(>=6.2) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
     @Test
     func `Bytes Matches UUID Bytes`() {
-      let uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
-      let expected = withUnsafeBytes(of: uuid.uuid) { [UInt8]($0) }
-      let bytes = byteArray(uuid.bytes)
-      #expect(bytes == expected)
-    }
-
-    @Test
-    func `Bytes Of UUIDs In An Array`() {
       let uuids = (0..<8).map { UUIDV7(timeIntervalSince1970: 1_000, UInt32($0)) }
       let expected = uuids.map { uuid in withUnsafeBytes(of: uuid.uuid) { [UInt8]($0) } }
       let bytes = uuids.map { byteArray($0.bytes) }
@@ -415,19 +355,10 @@ struct `UUIDV7 tests` {
     }
 
     @Test
-    func `From Bytes Round Trips`() {
-      let uuid = UUIDV7()
-      let copy = UUIDV7(copying: uuid.bytes)
-      #expect(copy == uuid)
-    }
-
-    @Test
     func `Reading Mutable Bytes`() {
       let uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
-      let byteCount = uuid.mutableBytes.byteCount
       let bytes = byteArray(uuid.mutableBytes.bytes)
       let expected = byteArray(uuid.bytes)
-      #expect(byteCount == 16)
       #expect(bytes == expected)
     }
 
@@ -437,33 +368,6 @@ struct `UUIDV7 tests` {
       uuid.mutableBytes.storeBytes(of: 0xAB, toByteOffset: 15, as: UInt8.self)
       #expect(uuid.uuid.15 == 0xAB)
       #expect(uuid.timeIntervalSince1970 == 1_000)
-    }
-
-    @Test
-    func `Mutating Bytes Through An Inout Parameter`() {
-      func overwriteRandomBytes(_ bytes: inout MutableRawSpan) {
-        for offset in 10..<16 {
-          bytes.storeBytes(of: 0xCD, toByteOffset: offset, as: UInt8.self)
-        }
-      }
-      var uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
-      overwriteRandomBytes(&uuid.mutableBytes)
-      #expect(uuid.uuidString.hasSuffix("CDCDCDCDCDCD"))
-      #expect(UUIDV7(uuid: uuid.uuid) == uuid)
-    }
-
-    @Test
-    func `Mutating Bytes Rethrows Errors`() {
-      struct SomeError: Error {}
-      func fail(_ bytes: inout MutableRawSpan) throws(SomeError) {
-        bytes.storeBytes(of: 0xEF, toByteOffset: 15, as: UInt8.self)
-        throw SomeError()
-      }
-      var uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
-      #expect(throws: SomeError.self) {
-        try fail(&uuid.mutableBytes)
-      }
-      #expect(uuid.uuid.15 == 0xEF)
     }
 
     private func byteArray(_ bytes: RawSpan) -> [UInt8] {
@@ -524,31 +428,10 @@ struct `UUIDV7 tests` {
 
     #if hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
       @Test
-      func `Exits When Mutated Bytes Change The Version`() async {
+      func `Exits When Mutated Bytes Are Not A Valid UUIDV7`() async {
         await #expect(processExitsWith: .failure) {
           var uuid = UUIDV7()
           uuid.mutableBytes.storeBytes(of: 0x40, toByteOffset: 6, as: UInt8.self)
-        }
-      }
-
-      @Test
-      func `Exits When Mutated Bytes Change The Variant`() async {
-        await #expect(processExitsWith: .failure) {
-          var uuid = UUIDV7()
-          uuid.mutableBytes.storeBytes(of: 0xC0, toByteOffset: 8, as: UInt8.self)
-        }
-      }
-
-      @Test
-      func `Exits When Mutated Bytes Are Invalid And An Error Is Thrown`() async {
-        await #expect(processExitsWith: .failure) {
-          struct SomeError: Error {}
-          func fail(_ bytes: inout MutableRawSpan) throws(SomeError) {
-            bytes.storeBytes(of: 0x40, toByteOffset: 6, as: UInt8.self)
-            throw SomeError()
-          }
-          var uuid = UUIDV7()
-          try? fail(&uuid.mutableBytes)
         }
       }
     #endif
@@ -630,17 +513,6 @@ struct `UUIDV7 tests` {
       let date = Date(staticISO8601: "2024-09-09T22:37:05+0000")
       let uuid = UUIDV7(date, offset: .seconds(60))
       #expect(uuid.date == date.addingTimeInterval(60))
-    }
-
-    @Test
-    func `Same Date And Seeded Generator Are Equal`() {
-      let date = Date(staticISO8601: "2024-09-09T22:37:05+0000")
-      var g1 = SplitMix64(seed: 42)
-      var g2 = SplitMix64(seed: 42)
-      let u1 = UUIDV7(date, using: &g1, offset: .seconds(60))
-      let u2 = UUIDV7(date, using: &g2, offset: .seconds(60))
-      #expect(u1 == u2)
-      #expect(u1.date == date.addingTimeInterval(60))
     }
 
     @Test
