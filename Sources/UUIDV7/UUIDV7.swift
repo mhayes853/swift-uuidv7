@@ -25,6 +25,10 @@
   #endif
 #endif
 
+#if compiler(>=6.2) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
+  import Builtin
+#endif
+
 #if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   public typealias UUIDBytes = uuid_t
 #else
@@ -59,8 +63,6 @@ public enum UUIDVariant: Hashable, Sendable {
       self = .rfc9562
     } else if x & 0xE0 == 0xC0 {
       self = .microsoft
-    } else if x & 0xE0 == 0xE0 {
-      self = .future
     } else {
       self = .future
     }
@@ -72,9 +74,12 @@ public enum UUIDVariant: Hashable, Sendable {
 #if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   @dynamicMemberLookup
 #endif
+#if compiler(>=6.2) && hasFeature(AddressableTypes)
+  @_addressableForDependencies
+#endif
 public struct UUIDV7 {
   /// The raw ``UUIDBytes`` of this UUID.
-  public let uuid: UUIDBytes
+  public private(set) var uuid: UUIDBytes
 
   /// Creates a UUID from the specified bytes.
   ///
@@ -94,12 +99,16 @@ public struct UUIDV7 {
 extension UUIDV7 {
   /// The timestamp embedded in this UUID.
   public var timeIntervalSince1970: TimeInterval {
-    let t1 = UInt64(self.uuid.0) << 40
-    let t2 = UInt64(self.uuid.1) << 32
-    let t3 = UInt64(self.uuid.2) << 24
-    let t4 = UInt64(self.uuid.3) << 16
-    let t5 = UInt64(self.uuid.4) << 8
-    let t6 = UInt64(self.uuid.5)
+    Self._timeIntervalSince1970(self.uuid)
+  }
+
+  package static func _timeIntervalSince1970(_ uuid: UUIDBytes) -> TimeInterval {
+    let t1 = UInt64(uuid.0) << 40
+    let t2 = UInt64(uuid.1) << 32
+    let t3 = UInt64(uuid.2) << 24
+    let t4 = UInt64(uuid.3) << 16
+    let t5 = UInt64(uuid.4) << 8
+    let t6 = UInt64(uuid.5)
     return TimeInterval(t1 | t2 | t3 | t4 | t5 | t6) / 1000
   }
 }
@@ -129,21 +138,78 @@ extension UUIDV7 {
   /// The 12 random bits that comprise of the `rand_a` field from RFC 9562 are replaced by a 12 bit
   /// counter as outlined by section 6.2 of the RFC.
   public init() {
-    self.init(_systemNow: Self.platformTimeIntervalSince1970())
+    self.init(_systemNow: Self._platformTimeIntervalSince1970())
   }
 
-  package init(_systemNow timeInterval: TimeInterval) {
-    let (millis, sequence) = MonotonicityState.current.withLock {
-      $0.nextMillisWithSequence(timeIntervalSince1970: timeInterval)
-    }
+  /// Creates a UUID with the current date offset by the specified duration as the timestamp.
+  ///
+  /// The offset is applied after the monotonic timestamp is computed. Therefore, UUIDs created
+  /// with the same offset will always be monotonically increasing, and the offset never affects
+  /// the timestamps of UUIDs created with other offsets.
+  ///
+  /// - Parameter offset: A duration to add to the current date.
+  public init(offset: Duration) {
+    self.init(_systemNow: Self._platformTimeIntervalSince1970(), offset: offset)
+  }
+
+  /// Creates a UUID with the current date as the timestamp, using the specified random number
+  /// generator for the random data.
+  ///
+  /// Like ``init()``, this initializer will always generate monotonically increasing UUIDs. The
+  /// 12 bit `rand_a` field holds a counter, and the remaining 62 random bits are produced by
+  /// `generator`.
+  ///
+  /// The offset is applied after the monotonic timestamp is computed. Therefore, UUIDs created
+  /// with the same offset will always be monotonically increasing, and the offset never affects
+  /// the timestamps of UUIDs created with other offsets.
+  ///
+  /// - Parameters:
+  ///   - generator: The random number generator to use when creating the random data.
+  ///   - offset: A duration to add to the current date.
+  public init(using generator: inout some RandomNumberGenerator, offset: Duration = .zero) {
+    var bytes = Self.randomBytes(using: &generator)
+    self.init(Self._platformTimeIntervalSince1970(), offset, &bytes)
+  }
+
+  package init(_systemNow timeInterval: TimeInterval, offset: Duration = .zero) {
     var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
+    self.init(timeInterval, offset, &bytes)
+  }
+
+  package init(_clampingOffset offset: Duration) {
+    var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
+    self.init(Self._platformTimeIntervalSince1970(), offset, &bytes, clampsToEpoch: true)
+  }
+
+  package init(
+    _clampingOffset offset: Duration,
+    using generator: inout some RandomNumberGenerator
+  ) {
+    var bytes = Self.randomBytes(using: &generator)
+    self.init(Self._platformTimeIntervalSince1970(), offset, &bytes, clampsToEpoch: true)
+  }
+
+  private init(
+    _ systemTimeInterval: TimeInterval,
+    _ offset: Duration,
+    _ bytes: inout UUIDBytes,
+    clampsToEpoch: Bool = false
+  ) {
+    let (millis, sequence) = MonotonicityState.current.withLock {
+      $0.nextMillisWithSequence(timeIntervalSince1970: systemTimeInterval)
+    }
+    let timestampMillis = Int64(millis) + offset.uuidV7Milliseconds
+    precondition(
+      clampsToEpoch || timestampMillis >= 0,
+      _negativeTimeStampMessage(TimeInterval(timestampMillis) / 1000)
+    )
     withUnsafePointer(to: sequence.bigEndian) { ptr in
       ptr.withMemoryRebound(to: (UInt8, UInt8).self, capacity: 1) {
         bytes.6 = $0.pointee.0
         bytes.7 = $0.pointee.1
       }
     }
-    self.init(millis, &bytes)
+    self.init(UInt64(Swift.max(0, timestampMillis)), &bytes)
   }
 }
 
@@ -169,6 +235,40 @@ extension UUIDV7 {
     self.init(timeInterval, &bytes)
   }
 
+  /// Creates a UUID with the specified unix epoch offset by the specified duration.
+  ///
+  /// This initializer does not implement sub-millisecond monotonicity, use ``init(offset:)``
+  /// instead if sub-millisecond monotonicity is needed.
+  ///
+  /// - Parameters:
+  ///   - timeInterval: The `TimeInterval` since 00:00:00 UTC on 1 January 1970.
+  ///   - offset: A duration to add to `timeInterval`.
+  public init(timeIntervalSince1970 timeInterval: TimeInterval, offset: Duration) {
+    self.init(timeIntervalSince1970: timeInterval + offset.uuidV7TimeInterval)
+  }
+
+  /// Creates a UUID with the specified unix epoch, using the specified random number generator
+  /// for the random data.
+  ///
+  /// All 74 random bits of this UUID are produced by `generator`. Therefore, 2 UUIDs with the same
+  /// unix epoch created from identically seeded generators will be equal.
+  ///
+  /// This initializer does not implement sub-millisecond monotonicity, use
+  /// ``init(using:offset:)`` instead if sub-millisecond monotonicity is needed.
+  ///
+  /// - Parameters:
+  ///   - timeInterval: The `TimeInterval` since 00:00:00 UTC on 1 January 1970.
+  ///   - generator: The random number generator to use when creating the random data.
+  ///   - offset: A duration to add to `timeInterval`.
+  public init(
+    timeIntervalSince1970 timeInterval: TimeInterval,
+    using generator: inout some RandomNumberGenerator,
+    offset: Duration = .zero
+  ) {
+    var bytes = Self.randomBytes(using: &generator)
+    self.init(timeInterval + offset.uuidV7TimeInterval, &bytes)
+  }
+
   /// Creates a UUID with the specified unix expoch and an integer that acts as the random data.
   ///
   /// This initializer is convenient for creating deterministic UUIDs. 2 UUIDs with the same
@@ -181,7 +281,7 @@ extension UUIDV7 {
   ///   - timeInterval: The `TimeInterval` since 00:00:00 UTC on 1 January 1970.
   ///   - integer: An integer to use in the random data part of this UUID.
   public init(timeIntervalSince1970 timeInterval: TimeInterval, _ integer: UInt32) {
-    var bytes: UUIDBytes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    var bytes = Self.nilUUIDBytes
     let byteCount = Int(ceil(Double(integer.bitWidth - integer.leadingZeroBitCount) / 8.0))
     withUnsafeMutablePointer(to: &bytes) { ptr in
       withUnsafePointer(to: integer) { integerPtr in
@@ -242,6 +342,43 @@ extension UUIDV7 {
     public init(_ date: Date, _ integer: UInt32) {
       self.init(timeIntervalSince1970: date.timeIntervalSince1970, integer)
     }
+
+    /// Creates a UUID with the specified `Date` offset by the specified duration.
+    ///
+    /// This initializer does not implement sub-millisecond monotonicity, use ``init(offset:)``
+    /// instead if sub-millisecond monotonicity is needed.
+    ///
+    /// - Parameters:
+    ///   - date: The `Date` to embed in this UUID.
+    ///   - offset: A duration to add to `date`.
+    public init(_ date: Date, offset: Duration) {
+      self.init(timeIntervalSince1970: date.timeIntervalSince1970, offset: offset)
+    }
+
+    /// Creates a UUID with the specified `Date`, using the specified random number generator for
+    /// the random data.
+    ///
+    /// All 74 random bits of this UUID are produced by `generator`. Therefore, 2 UUIDs with the
+    /// same date created from identically seeded generators will be equal.
+    ///
+    /// This initializer does not implement sub-millisecond monotonicity, use
+    /// ``init(using:offset:)`` instead if sub-millisecond monotonicity is needed.
+    ///
+    /// - Parameters:
+    ///   - date: The `Date` to embed in this UUID.
+    ///   - generator: The random number generator to use when creating the random data.
+    ///   - offset: A duration to add to `date`.
+    public init(
+      _ date: Date,
+      using generator: inout some RandomNumberGenerator,
+      offset: Duration = .zero
+    ) {
+      self.init(
+        timeIntervalSince1970: date.timeIntervalSince1970,
+        using: &generator,
+        offset: offset
+      )
+    }
   }
 #endif
 
@@ -260,6 +397,43 @@ extension UUIDV7 {
   public static var now: Self { Self() }
 }
 
+// MARK: - Min And Max
+
+extension UUIDV7 {
+  /// The smallest possible ``UUIDV7``, “00000000-0000-7000-8000-000000000000”.
+  ///
+  /// Unlike the nil UUID defined by RFC 9562, this UUID has its version and variant bits set, and
+  /// can be used as a lower bound when querying a range of UUIDs.
+  public static let min = UUIDV7(
+    uuid: (0, 0, 0, 0, 0, 0, 0x70, 0, 0x80, 0, 0, 0, 0, 0, 0, 0)
+  )!
+
+  /// The largest possible ``UUIDV7``, “FFFFFFFF-FFFF-7FFF-BFFF-FFFFFFFFFFFF”.
+  ///
+  /// Unlike the max UUID defined by RFC 9562, this UUID has its version and variant bits set, and
+  /// can be used as an upper bound when querying a range of UUIDs.
+  public static let max = UUIDV7(
+    uuid: (
+      0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F, 0xFF,
+      0xBF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    )
+  )!
+}
+
+// MARK: - Version And Variant
+
+extension UUIDV7 {
+  /// The version number of this UUID as defined by RFC 9562, which is always 7.
+  public var version: Int {
+    7
+  }
+
+  /// The variant of this UUID as defined by RFC 9562, which is always ``UUIDVariant/rfc9562``.
+  public var variant: UUIDVariant {
+    .rfc9562
+  }
+}
+
 // MARK: - Basic Initializers
 
 #if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
@@ -271,6 +445,116 @@ extension UUIDV7 {
     /// - Parameter uuid: A Foundation UUID.
     public init?(_ uuid: UUID) {
       self.init(rawValue: uuid)
+    }
+  }
+#endif
+
+// MARK: - Span Initializers
+
+#if compiler(>=6.2)
+  extension UUIDV7 {
+    /// Attempts to create a ``UUIDV7`` by copying exactly 16 bytes from a `RawSpan`.
+    ///
+    /// The bytes must be compliant with RFC 9562 UUID Version 7.
+    ///
+    /// - Precondition: `bytes.byteCount` must be exactly 16.
+    /// - Parameter bytes: The bytes to copy.
+    public init?(copying bytes: RawSpan) {
+      self.init(uuid: Self._uuidBytes(copying: bytes))
+    }
+
+    /// Attempts to create a ``UUIDV7`` by filling its 16 bytes using a closure that writes into an
+    /// `OutputRawSpan`.
+    ///
+    /// The written bytes must be compliant with RFC 9562 UUID Version 7.
+    ///
+    /// - Precondition: `initializer` must write exactly 16 bytes.
+    /// - Parameter initializer: A closure that writes the bytes of the UUID.
+    public init?<E: Error>(
+      initializingWith initializer: (inout OutputRawSpan) throws(E) -> Void
+    ) throws(E) {
+      try self.init(uuid: Self._uuidBytes(initializingWith: initializer))
+    }
+
+    package static func _uuidBytes(copying bytes: RawSpan) -> UUIDBytes {
+      precondition(
+        bytes.byteCount == MemoryLayout<UUIDBytes>.size,
+        "A UUID requires exactly 16 bytes, but \(bytes.byteCount) were provided."
+      )
+      return bytes.withUnsafeBytes { $0.loadUnaligned(as: UUIDBytes.self) }
+    }
+
+    package static func _uuidBytes<E: Error>(
+      initializingWith initializer: (inout OutputRawSpan) throws(E) -> Void
+    ) throws(E) -> UUIDBytes {
+      var bytes = Self.nilUUIDBytes
+      try withUnsafeMutableBytes(of: &bytes) { buffer throws(E) in
+        var output = OutputRawSpan(buffer: buffer, initializedCount: 0)
+        try initializer(&output)
+        precondition(
+          output.byteCount == MemoryLayout<UUIDBytes>.size,
+          "A UUID requires exactly 16 bytes, but \(output.byteCount) were provided."
+        )
+        _ = output.finalize(for: buffer)
+      }
+      return bytes
+    }
+  }
+#endif
+
+// MARK: - Bytes
+
+#if compiler(>=6.2) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
+  extension UUIDV7 {
+    /// A `RawSpan` view of this UUID's 16 bytes.
+    public var bytes: RawSpan {
+      @_lifetime(borrow self)
+      borrowing get {
+        let pointer = UnsafeRawPointer(Builtin.addressOfBorrow(self))
+        let span = RawSpan(_unsafeStart: pointer, byteCount: MemoryLayout<UUIDBytes>.size)
+        return _overrideLifetime(span, borrowing: self)
+      }
+    }
+
+    /// A `MutableRawSpan` view of this UUID's 16 bytes.
+    ///
+    /// Mutate the bytes in place, either through a method on this property, or by passing
+    /// `&uuid.mutableBytes` to a function. The span cannot be stored in a variable, because this
+    /// UUID is validated at the end of every mutation.
+    ///
+    /// - Precondition: The mutated bytes must be compliant with RFC 9562 UUID Version 7.
+    public var mutableBytes: MutableRawSpan {
+      _read {
+        yield self.mutableBytesForReading()
+      }
+      _modify {
+        defer { self.validateMutatedBytes() }
+        var span = self.mutableBytesForWriting()
+        yield &span
+      }
+    }
+
+    @_lifetime(borrow self)
+    private borrowing func mutableBytesForReading() -> MutableRawSpan {
+      let pointer = UnsafeMutableRawPointer(
+        mutating: UnsafeRawPointer(Builtin.addressOfBorrow(self))
+      )
+      let span = MutableRawSpan(_unsafeStart: pointer, byteCount: MemoryLayout<UUIDBytes>.size)
+      return _overrideLifetime(span, borrowing: self)
+    }
+
+    @_lifetime(&self)
+    private mutating func mutableBytesForWriting() -> MutableRawSpan {
+      let pointer = UnsafeMutableRawPointer(Builtin.addressof(&self))
+      let span = MutableRawSpan(_unsafeStart: pointer, byteCount: MemoryLayout<UUIDBytes>.size)
+      return _overrideLifetime(span, mutating: &self)
+    }
+
+    private func validateMutatedBytes() {
+      precondition(
+        Self(uuid: self.uuid) != nil,
+        "The mutated bytes of a UUIDV7 must be compliant with RFC 9562 UUID Version 7."
+      )
     }
   }
 #endif
@@ -290,7 +574,13 @@ extension UUIDV7 {
 
   /// Returns a string created from the UUID, such as “019B1FC9-11AE-7850-99CA-C24474C79EA9”.
   public var uuidString: String {
-    Self.string(from: self.uuid)
+    Self._uuidString(self.uuid, lowercased: false)
+  }
+
+  /// Returns a lowercase string created from the UUID, such as
+  /// “019b1fc9-11ae-7850-99ca-c24474c79ea9”.
+  public var lowercasedUUIDString: String {
+    Self._uuidString(self.uuid, lowercased: true)
   }
 }
 
@@ -342,6 +632,14 @@ extension UUIDV7: Decodable {
 
 extension UUIDV7: CustomStringConvertible {
   public var description: String {
+    self.uuidString
+  }
+}
+
+// MARK: - CustomDebugStringConvertible
+
+extension UUIDV7: CustomDebugStringConvertible {
+  public var debugDescription: String {
     self.uuidString
   }
 }
@@ -401,7 +699,7 @@ extension UUIDV7: Sendable {}
 // MARK: - Private Helpers
 
 extension UUIDV7 {
-  private static func platformTimeIntervalSince1970() -> TimeInterval {
+  package static func _platformTimeIntervalSince1970() -> TimeInterval {
     #if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
       Date().timeIntervalSince1970
     #elseif os(WASI)
@@ -420,8 +718,10 @@ extension UUIDV7 {
     #endif
   }
 
+  private static let nilUUIDBytes: UUIDBytes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
   private static let hyphen = UInt8(0x2D)
-  private static let hexLookup = [Character]("0123456789ABCDEF")
+  private static let uppercaseHexDigits = [Character]("0123456789ABCDEF")
+  private static let lowercaseHexDigits = [Character]("0123456789abcdef")
   private static let expectedHyphenIndices = Set([8, 13, 18, 23])
 
   private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
@@ -453,8 +753,9 @@ extension UUIDV7 {
 
   private static let hyphenPositions = Set([8, 12, 16, 20])
 
-  private static func string(from bytes: UUIDBytes) -> String {
-    withUnsafeBytes(of: bytes) { rawBytes in
+  package static func _uuidString(_ uuid: UUIDBytes, lowercased: Bool) -> String {
+    let hexDigits = lowercased ? Self.lowercaseHexDigits : Self.uppercaseHexDigits
+    return withUnsafeBytes(of: uuid) { rawBytes in
       var output = ""
       output.reserveCapacity(36)
 
@@ -463,8 +764,8 @@ extension UUIDV7 {
         let high = Int(byte >> 4)
         let low = Int(byte & 0x0F)
 
-        output.append(Self.hexLookup[high])
-        output.append(Self.hexLookup[low])
+        output.append(hexDigits[high])
+        output.append(hexDigits[low])
 
         hexCount += 2
 
@@ -474,6 +775,12 @@ extension UUIDV7 {
       }
       return output
     }
+  }
+
+  package static func randomBytes(using generator: inout some RandomNumberGenerator) -> UUIDBytes {
+    let high = UInt64.random(in: .min ... .max, using: &generator)
+    let low = UInt64.random(in: .min ... .max, using: &generator)
+    return unsafeBitCast((high.bigEndian, low.bigEndian), to: UUIDBytes.self)
   }
 
   private static let numericRange = UInt8(48)...57
@@ -487,6 +794,20 @@ extension UUIDV7 {
     case lowercaseRange: character &- 87
     default: nil
     }
+  }
+}
+
+// MARK: - Duration Helpers
+
+extension Duration {
+  package var uuidV7TimeInterval: TimeInterval {
+    let (seconds, attoseconds) = self.components
+    return TimeInterval(seconds) + TimeInterval(attoseconds) / 1_000_000_000_000_000_000
+  }
+
+  fileprivate var uuidV7Milliseconds: Int64 {
+    let (seconds, attoseconds) = self.components
+    return seconds * 1000 + attoseconds / 1_000_000_000_000_000
   }
 }
 

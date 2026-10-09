@@ -200,7 +200,7 @@ struct `UUIDV7 tests` {
 
   @Test
   func `Monotonically Increases When System Time Is Moved Backwards`() {
-    let now = UUIDV7().timeIntervalSince1970
+    let now = UUIDV7._platformTimeIntervalSince1970()
     let u1 = UUIDV7(_systemNow: now)
     let u2 = UUIDV7(_systemNow: now - 1000)
     let u3 = UUIDV7(_systemNow: now - 2000)
@@ -210,7 +210,7 @@ struct `UUIDV7 tests` {
 
   @Test
   func `Monotonically Increases When System Time Fluctuates`() {
-    let now = UUIDV7().timeIntervalSince1970
+    let now = UUIDV7._platformTimeIntervalSince1970()
     var u1 = UUIDV7(_systemNow: now)
     for i in 0..<1000 {
       let interval = Double(i.isMultiple(of: 2) ? -i : i)
@@ -222,7 +222,7 @@ struct `UUIDV7 tests` {
 
   @Test
   func `Monotonically Increases When System Time Jumps`() {
-    let now = UUIDV7().timeIntervalSince1970
+    let now = UUIDV7._platformTimeIntervalSince1970()
     var u1 = UUIDV7(_systemNow: now)
     for i in 0..<1000 {
       let u2 = UUIDV7(_systemNow: now - Double(i))
@@ -238,7 +238,7 @@ struct `UUIDV7 tests` {
 
   @Test
   func `Monotonically Increases When System Time Is Frozen`() {
-    let now = UUIDV7().timeIntervalSince1970
+    let now = UUIDV7._platformTimeIntervalSince1970()
     // NB: More calls than the 12 bit counter can hold, so the counter rolls into the timestamp.
     var u1 = UUIDV7(_systemNow: now)
     for _ in 0..<10_000 {
@@ -247,6 +247,133 @@ struct `UUIDV7 tests` {
       u1 = u2
     }
   }
+
+  @Test
+  func `Lowercased UUID String`() {
+    let uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
+    #expect(uuid.lowercasedUUIDString == "0000000f-4240-7000-8000-00000000002a")
+  }
+
+  @Test
+  func `Min And Max`() {
+    #expect(UUIDV7.min.uuidString == "00000000-0000-7000-8000-000000000000")
+    #expect(UUIDV7.max.uuidString == "FFFFFFFF-FFFF-7FFF-BFFF-FFFFFFFFFFFF")
+  }
+
+  @Test(
+    arguments: [
+      (1_000, Duration.seconds(5), 1_005),
+      (1_000, .milliseconds(250), 1_000.25),
+      (1_000, .seconds(-500), 500)
+    ] as [(TimeInterval, Duration, TimeInterval)]
+  )
+  func `Time Interval With Offset`(
+    timeInterval: TimeInterval,
+    offset: Duration,
+    expected: TimeInterval
+  ) {
+    let uuid = UUIDV7(timeIntervalSince1970: timeInterval, offset: offset)
+    #expect(uuid.timeIntervalSince1970 == expected)
+  }
+
+  @Test
+  func `Offset Is Applied To The Current Time`() {
+    let before = UUIDV7().timeIntervalSince1970
+    let uuid = UUIDV7(offset: .seconds(-3_600))
+    let after = UUIDV7().timeIntervalSince1970
+    #expect(uuid.timeIntervalSince1970 >= before - 3_600)
+    #expect(uuid.timeIntervalSince1970 <= after - 3_600)
+  }
+
+  @Test
+  func `Clamping Offset Does Not Trap Before 1970`() {
+    let offset = Duration.seconds(-UUIDV7._platformTimeIntervalSince1970() - 1_000)
+    var generator = SplitMix64(seed: 42)
+    let u1 = UUIDV7(_clampingOffset: offset)
+    let u2 = UUIDV7(_clampingOffset: offset, using: &generator)
+    #expect(u1.timeIntervalSince1970 >= 0)
+    #expect(u2.timeIntervalSince1970 >= 0)
+  }
+
+  @Test
+  func `UUIDs With The Same Offset Are Monotonically Increasing`() {
+    let now = UUIDV7._platformTimeIntervalSince1970()
+    var u1 = UUIDV7(_systemNow: now, offset: .seconds(-60))
+    for i in 0..<1000 {
+      let interval = Double(i.isMultiple(of: 2) ? -i : i)
+      let u2 = UUIDV7(_systemNow: now + interval, offset: .seconds(-60))
+      #expect(u2 > u1)
+      u1 = u2
+    }
+  }
+
+  @Test
+  func `Time Interval With Seeded Generator`() {
+    var generator = SplitMix64(seed: 42)
+    let uuid = UUIDV7(timeIntervalSince1970: 1_000, using: &generator)
+    #expect(uuid.uuidString == "0000000F-4240-7E95-A8EF-E333B266F103")
+  }
+
+  @Test
+  func `Constant Generator UUIDs Are Monotonically Increasing Valid UUIDV7s`() {
+    var generator = ConstantGenerator()
+    let uuids = (0..<10_000).map { _ in UUIDV7(using: &generator) }
+    #expect(zip(uuids, uuids.dropFirst()).allSatisfy { $0 < $1 })
+    #expect(uuids.allSatisfy { UUIDV7(uuid: $0.uuid) == $0 })
+  }
+
+  #if compiler(>=6.2)
+    @Test
+    func `From RawSpan`() {
+      let uuid = UUIDV7()
+      let bytes = withUnsafeBytes(of: uuid.uuid) { [UInt8]($0) }
+      #expect(UUIDV7(copying: bytes.span.bytes) == uuid)
+    }
+
+    @Test
+    func `Initializing With OutputRawSpan`() {
+      let uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
+      let output = UUIDV7 { output in
+        withUnsafeBytes(of: uuid.uuid) { bytes in
+          for byte in bytes {
+            output.append(byte)
+          }
+        }
+      }
+      #expect(output == uuid)
+    }
+  #endif
+
+  // NB: Spans are read outside of #expect, because Swift 6.2 can crash when compiling them inside.
+  #if compiler(>=6.2) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
+    @Test
+    func `Bytes Matches UUID Bytes`() {
+      let uuids = (0..<8).map { UUIDV7(timeIntervalSince1970: 1_000, UInt32($0)) }
+      let expected = uuids.map { uuid in withUnsafeBytes(of: uuid.uuid) { [UInt8]($0) } }
+      let bytes = uuids.map { byteArray($0.bytes) }
+      #expect(bytes == expected)
+    }
+
+    @Test
+    func `Reading Mutable Bytes`() {
+      let uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
+      let bytes = byteArray(uuid.mutableBytes.bytes)
+      let expected = byteArray(uuid.bytes)
+      #expect(bytes == expected)
+    }
+
+    @Test
+    func `Mutating Bytes In Place`() {
+      var uuid = UUIDV7(timeIntervalSince1970: 1_000, 42)
+      uuid.mutableBytes.storeBytes(of: 0xAB, toByteOffset: 15, as: UInt8.self)
+      #expect(uuid.uuid.15 == 0xAB)
+      #expect(uuid.timeIntervalSince1970 == 1_000)
+    }
+
+    private func byteArray(_ bytes: RawSpan) -> [UInt8] {
+      bytes.withUnsafeBytes { [UInt8]($0) }
+    }
+  #endif
 
   @Test
   func `Negative Time Interval Message Mentions The Timestamp`() {
@@ -261,6 +388,53 @@ struct `UUIDV7 tests` {
         _ = UUIDV7(timeIntervalSince1970: -1000)
       }
     }
+
+    @Test
+    func `Offset Does Not Shift Subsequent UUIDs`() async {
+      // NB: Runs in a separate process so that other tests cannot move the shared monotonic state.
+      await #expect(processExitsWith: .success) {
+        let now = UUIDV7._platformTimeIntervalSince1970()
+        _ = UUIDV7(_systemNow: now, offset: .seconds(-86_400))
+        _ = UUIDV7(_systemNow: now, offset: .seconds(86_400))
+        let uuid = UUIDV7(_systemNow: now)
+        precondition(abs(uuid.timeIntervalSince1970 - now) < 1)
+      }
+    }
+
+    @Test
+    func `Exits When Offset Produces Negative Timestamp`() async {
+      await #expect(processExitsWith: .failure) {
+        _ = UUIDV7(timeIntervalSince1970: 1_000, offset: .seconds(-2_000))
+      }
+      await #expect(processExitsWith: .failure) {
+        _ = UUIDV7(offset: .seconds(-Int64.max / 1_000))
+      }
+    }
+
+    @Test
+    func `Exits When RawSpan Is Not 16 Bytes`() async {
+      await #expect(processExitsWith: .failure) {
+        let bytes = [UInt8](repeating: 0, count: 15)
+        _ = UUIDV7(copying: bytes.span.bytes)
+      }
+    }
+
+    @Test
+    func `Exits When OutputRawSpan Is Not Fully Initialized`() async {
+      await #expect(processExitsWith: .failure) {
+        _ = UUIDV7 { $0.append(UInt8(0)) }
+      }
+    }
+
+    #if hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
+      @Test
+      func `Exits When Mutated Bytes Are Not A Valid UUIDV7`() async {
+        await #expect(processExitsWith: .failure) {
+          var uuid = UUIDV7()
+          uuid.mutableBytes.storeBytes(of: 0x40, toByteOffset: 6, as: UInt8.self)
+        }
+      }
+    #endif
   #endif
 
   #if SwiftUUIDV7Foundation && canImport(Foundation)
@@ -335,6 +509,13 @@ struct `UUIDV7 tests` {
     }
 
     @Test
+    func `Date With Offset`() {
+      let date = Date(staticISO8601: "2024-09-09T22:37:05+0000")
+      let uuid = UUIDV7(date, offset: .seconds(60))
+      #expect(uuid.date == date.addingTimeInterval(60))
+    }
+
+    @Test
     func `Decode Valid UUIDV7`() throws {
       let u = UUID(uuidString: "1915C92E-B61E-7E3E-AFEA-2B5F3EA2DCF0")!
       let data = try JSONEncoder().encode(u)
@@ -365,4 +546,26 @@ private func uuidBytes(_ bytes: [UInt8]) -> UUIDBytes {
     bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
     bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
   )
+}
+
+struct SplitMix64: RandomNumberGenerator, Hashable, Sendable {
+  private var state: UInt64
+
+  init(seed: UInt64) {
+    self.state = seed
+  }
+
+  mutating func next() -> UInt64 {
+    self.state &+= 0x9E37_79B9_7F4A_7C15
+    var z = self.state
+    z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+    z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+    return z ^ (z >> 31)
+  }
+}
+
+private struct ConstantGenerator: RandomNumberGenerator, Hashable, Sendable {
+  func next() -> UInt64 {
+    0
+  }
 }
