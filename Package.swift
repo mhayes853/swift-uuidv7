@@ -3,6 +3,12 @@
 
 import PackageDescription
 
+let spanSettings: [SwiftSetting] = [
+  .enableExperimentalFeature("Lifetimes"),
+  .enableExperimentalFeature("AddressableTypes"),
+  .enableExperimentalFeature("BuiltinModule")
+]
+
 let package = Package(
   name: "swift-uuidv7",
   platforms: [.iOS(.v16), .macOS(.v13), .tvOS(.v16), .watchOS(.v9), .macCatalyst(.v16)],
@@ -105,7 +111,7 @@ let package = Package(
           condition: .when(traits: ["SwiftUUIDV7SQLiteData"])
         )
       ],
-      swiftSettings: [.define("SWIFT_UUIDV7_PACKAGE_BUILD")]
+      swiftSettings: [.define("SWIFT_UUIDV7_PACKAGE_BUILD")] + spanSettings
     ),
     .testTarget(
       name: "UUIDV7Tests",
@@ -121,7 +127,7 @@ let package = Package(
           "SWIFT_UUIDV7_EXIT_TESTABLE_PLATFORM",
           .when(platforms: [.macOS, .linux, .windows])
         )
-      ]
+      ] + spanSettings
     )
   ],
   swiftLanguageModes: [.v6]
