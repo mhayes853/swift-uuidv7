@@ -30,7 +30,7 @@ jobs:
     runs-on: macos-26
     strategy:
       matrix:
-        xcode: ["26.0"]
+        xcode: ["26.0", "26.2"]
         config: ["debug", "release"]
     steps:
       - uses: actions/checkout@v4
@@ -100,7 +100,7 @@ jobs:
       - name: "Setup Swift on Windows"
         uses: compnerd/gha-setup-swift@main
         with:
-          branch: swift-6.2-release
-          tag: 6.2-RELEASE
+          branch: swift-6.2.3-release
+          tag: 6.2.3-RELEASE
       - name: "Test Swift Package on Windows"
         run: swift test --configuration ${{ matrix.config }} --traits SwiftUUIDV7Tagged
