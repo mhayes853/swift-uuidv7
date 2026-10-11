@@ -25,7 +25,7 @@
   #endif
 #endif
 
-#if compiler(>=6.2) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
+#if compiler(>=6.2.3) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
   import Builtin
 #endif
 
@@ -74,7 +74,7 @@ public enum UUIDVariant: Hashable, Sendable {
 #if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   @dynamicMemberLookup
 #endif
-#if compiler(>=6.2) && hasFeature(AddressableTypes)
+#if compiler(>=6.2.3) && hasFeature(AddressableTypes)
   @_addressableForDependencies
 #endif
 public struct UUIDV7 {
@@ -451,7 +451,7 @@ extension UUIDV7 {
 
 // MARK: - Span Initializers
 
-#if compiler(>=6.2)
+#if compiler(>=6.2.3)
   extension UUIDV7 {
     /// Attempts to create a ``UUIDV7`` by copying exactly 16 bytes from a `RawSpan`.
     ///
@@ -504,7 +504,7 @@ extension UUIDV7 {
 
 // MARK: - Bytes
 
-#if compiler(>=6.2) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
+#if compiler(>=6.2.3) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
   extension UUIDV7 {
     /// A `RawSpan` view of this UUID's 16 bytes.
     public var bytes: RawSpan {

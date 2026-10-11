@@ -322,12 +322,12 @@ struct `UUIDV7 tests` {
     #expect(uuids.allSatisfy { UUIDV7(uuid: $0.uuid) == $0 })
   }
 
-  #if compiler(>=6.2)
+  #if compiler(>=6.2.3) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
     @Test
     func `From RawSpan`() {
       let uuid = UUIDV7()
-      let bytes = withUnsafeBytes(of: uuid.uuid) { [UInt8]($0) }
-      #expect(UUIDV7(copying: bytes.span.bytes) == uuid)
+      let copied = UUIDV7(copying: uuid.bytes)
+      #expect(copied == uuid)
     }
 
     @Test
@@ -345,7 +345,7 @@ struct `UUIDV7 tests` {
   #endif
 
   // NB: Spans are read outside of #expect, because Swift 6.2 can crash when compiling them inside.
-  #if compiler(>=6.2) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
+  #if compiler(>=6.2.3) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
     @Test
     func `Bytes Matches UUID Bytes`() {
       let uuids = (0..<8).map { UUIDV7(timeIntervalSince1970: 1_000, UInt32($0)) }
@@ -411,22 +411,21 @@ struct `UUIDV7 tests` {
       }
     }
 
-    @Test
-    func `Exits When RawSpan Is Not 16 Bytes`() async {
-      await #expect(processExitsWith: .failure) {
-        let bytes = [UInt8](repeating: 0, count: 15)
-        _ = UUIDV7(copying: bytes.span.bytes)
+    #if compiler(>=6.2.3) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
+      @Test
+      func `Exits When RawSpan Is Not 16 Bytes`() async {
+        await #expect(processExitsWith: .failure) {
+          _ = UUIDV7(copying: UUIDV7().bytes.extracting(first: 15))
+        }
       }
-    }
 
-    @Test
-    func `Exits When OutputRawSpan Is Not Fully Initialized`() async {
-      await #expect(processExitsWith: .failure) {
-        _ = UUIDV7 { $0.append(UInt8(0)) }
+      @Test
+      func `Exits When OutputRawSpan Is Not Fully Initialized`() async {
+        await #expect(processExitsWith: .failure) {
+          _ = UUIDV7 { $0.append(UInt8(0)) }
+        }
       }
-    }
 
-    #if hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
       @Test
       func `Exits When Mutated Bytes Are Not A Valid UUIDV7`() async {
         await #expect(processExitsWith: .failure) {

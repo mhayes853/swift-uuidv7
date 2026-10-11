@@ -159,7 +159,7 @@
 
   // MARK: - Span Initializers
 
-  #if compiler(>=6.2)
+  #if compiler(>=6.2.3)
     extension UUID {
       /// Creates a UUID by copying exactly 16 bytes from a `RawSpan`.
       ///

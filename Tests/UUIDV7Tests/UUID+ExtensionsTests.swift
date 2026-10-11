@@ -120,12 +120,12 @@
       #expect(uuid.lowercasedUUIDString == "0000000f-4240-7e95-a8ef-e333b266f103")
     }
 
-    #if compiler(>=6.2)
+    #if compiler(>=6.2.3) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
       @Test
       func `From RawSpan`() {
-        let uuid = UUID()
-        let bytes = withUnsafeBytes(of: uuid.uuid) { [UInt8]($0) }
-        #expect(UUID(copying: bytes.span.bytes) == uuid)
+        let uuid = UUIDV7()
+        let copied = UUID(copying: uuid.bytes)
+        #expect(copied == UUID(uuid: uuid.uuid))
       }
 
       @Test
