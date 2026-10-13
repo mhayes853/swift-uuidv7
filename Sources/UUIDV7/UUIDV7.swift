@@ -176,15 +176,25 @@ extension UUIDV7 {
   ///   - offset: A duration to add to the current date.
   public init(using generator: inout some RandomNumberGenerator, offset: Duration = .zero) {
     let bytes = Self.randomBytes(using: &generator)
-    self.init(Self._platformTimeIntervalSince1970(), offset, bytes)
+    self.init(Self._platformTimeIntervalSince1970(), offset.uuidV7Milliseconds, bytes)
   }
 
-  package init(_systemNow timeInterval: TimeInterval, offset: Duration = .zero) {
-    self.init(timeInterval, offset)
+  // NB: The offset is passed in milliseconds so that init() doesn't call into Duration, which
+  // can't be inlined from the standard library, and measurably slows down generation.
+  package init(_systemNow timeInterval: TimeInterval) {
+    self.init(timeInterval, 0)
+  }
+
+  package init(_systemNow timeInterval: TimeInterval, offset: Duration) {
+    self.init(timeInterval, offset.uuidV7Milliseconds)
   }
 
   package init(_clampingOffset offset: Duration) {
-    self.init(Self._platformTimeIntervalSince1970(), offset, clampsToEpoch: true)
+    self.init(
+      Self._platformTimeIntervalSince1970(),
+      offset.uuidV7Milliseconds,
+      clampsToEpoch: true
+    )
   }
 
   package init(
@@ -192,12 +202,17 @@ extension UUIDV7 {
     using generator: inout some RandomNumberGenerator
   ) {
     let bytes = Self.randomBytes(using: &generator)
-    self.init(Self._platformTimeIntervalSince1970(), offset, bytes, clampsToEpoch: true)
+    self.init(
+      Self._platformTimeIntervalSince1970(),
+      offset.uuidV7Milliseconds,
+      bytes,
+      clampsToEpoch: true
+    )
   }
 
   private init(
     _ systemTimeInterval: TimeInterval,
-    _ offset: Duration,
+    _ offsetMillis: Int64,
     clampsToEpoch: Bool = false
   ) {
     let (millis, sequence, bytes) = GenerationState.shared.withLock { state in
@@ -206,29 +221,29 @@ extension UUIDV7 {
       )
       return (millis, sequence, state.random.next())
     }
-    self.init(millis, sequence, offset, bytes, clampsToEpoch: clampsToEpoch)
+    self.init(millis, sequence, offsetMillis, bytes, clampsToEpoch: clampsToEpoch)
   }
 
   private init(
     _ systemTimeInterval: TimeInterval,
-    _ offset: Duration,
+    _ offsetMillis: Int64,
     _ bytes: UUIDBytes,
     clampsToEpoch: Bool = false
   ) {
     let (millis, sequence) = GenerationState.shared.withLock {
       $0.monotonicity.nextMillisWithSequence(timeIntervalSince1970: systemTimeInterval)
     }
-    self.init(millis, sequence, offset, bytes, clampsToEpoch: clampsToEpoch)
+    self.init(millis, sequence, offsetMillis, bytes, clampsToEpoch: clampsToEpoch)
   }
 
   private init(
     _ millis: UInt64,
     _ sequence: UInt16,
-    _ offset: Duration,
+    _ offsetMillis: Int64,
     _ bytes: UUIDBytes,
     clampsToEpoch: Bool
   ) {
-    let timestampMillis = Int64(millis) + offset.uuidV7Milliseconds
+    let timestampMillis = Int64(millis) + offsetMillis
     precondition(
       clampsToEpoch || timestampMillis >= 0,
       _negativeTimeStampMessage(TimeInterval(timestampMillis) / 1000)
