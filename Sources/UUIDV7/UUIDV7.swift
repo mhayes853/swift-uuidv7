@@ -29,10 +29,6 @@
   import Builtin
 #endif
 
-// NB: 64-bit ARM uses a NEON implementation for string conversions, and x86-64 uses an AVX2
-// implementation on CPUs that support AVX2. Both are written in C so that they can be inlined
-// (which on x86-64 requires a target CPU that always supports AVX2). All other platforms (and
-// standalone copies of this file) use the portable Swift implementation.
 #if canImport(CUUIDV7) && (arch(arm64) || arch(x86_64)) && !os(Windows)
   internal import CUUIDV7
 #endif
@@ -179,8 +175,6 @@ extension UUIDV7 {
     self.init(Self._platformTimeIntervalSince1970(), offset.uuidV7Milliseconds, bytes)
   }
 
-  // NB: The offset is passed in milliseconds so that init() doesn't call into Duration, which
-  // can't be inlined from the standard library, and measurably slows down generation.
   package init(_systemNow timeInterval: TimeInterval) {
     self.init(timeInterval, 0)
   }
@@ -754,12 +748,10 @@ extension UUIDV7 {
       let ticks = (UInt64(fileTime.dwHighDateTime) << 32) | UInt64(fileTime.dwLowDateTime)
       return TimeInterval(ticks) / 10_000_000 - 11_644_473_600
     #elseif os(WASI)
-      // NB: Swift can't import __WASI_CLOCKID_REALTIME, which is 0.
       var timestamp: __wasi_timestamp_t = 0
       _ = __wasi_clock_time_get(0, 1_000_000, &timestamp)
       return TimeInterval(timestamp) / 1_000_000_000
     #else
-      // NB: This is roughly twice as fast as Date(), which reads the same clock.
       var time = timespec()
       clock_gettime(CLOCK_REALTIME, &time)
       return TimeInterval(time.tv_sec) + TimeInterval(time.tv_nsec) / 1_000_000_000
@@ -780,7 +772,6 @@ extension UUIDV7 {
 extension UUIDV7 {
   private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
     guard uuidString.utf8.count == 36 else { return nil }
-    // NB: Bridged strings may not store contiguous UTF-8, so they're copied into native strings.
     if let bytes = uuidString.utf8.withContiguousStorageIfAvailable(Self.uuidBytes(fromUTF8:)) {
       return bytes
     }
@@ -791,7 +782,6 @@ extension UUIDV7 {
 
 #if canImport(CUUIDV7) && (arch(arm64) || arch(x86_64)) && !os(Windows)
   extension UUIDV7 {
-    /// Decodes the 36 UTF-8 bytes of a UUID string.
     private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
       guard uuidv7_is_supported() else { return Self.portableUUIDBytes(fromUTF8: utf8) }
       let result = uuidv7_decode(utf8.baseAddress!)
@@ -811,7 +801,6 @@ extension UUIDV7 {
   }
 #else
   extension UUIDV7 {
-    /// Decodes the 36 UTF-8 bytes of a UUID string.
     private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
       Self.portableUUIDBytes(fromUTF8: utf8)
     }
@@ -822,9 +811,6 @@ extension UUIDV7 {
   }
 #endif
 
-// NB: The portable implementation is also the fallback for x86-64 CPUs without AVX2. It processes
-// 8 hex digits at a time by packing them into the bytes of a UInt64 (SWAR). Hex digits are ASCII,
-// so the per-byte arithmetic below never carries into a neighboring byte.
 extension UUIDV7 {
   private static let hyphen = UInt8(0x2D)
   private static let highBits = UInt64(0x8080_8080_8080_8080)
@@ -845,12 +831,10 @@ extension UUIDV7 {
     )
   }
 
-  /// Loads 8 characters, with the first character in the lowest byte.
   private static func characters(_ string: UnsafeRawPointer, at offset: Int) -> UInt64 {
     UInt64(littleEndian: string.loadUnaligned(fromByteOffset: offset, as: UInt64.self))
   }
 
-  /// Loads 4 characters from each offset, with the first character in the lowest byte.
   private static func characters(
     _ string: UnsafeRawPointer,
     at first: Int,
@@ -882,13 +866,10 @@ extension UUIDV7 {
     return bytes
   }
 
-  /// Decodes 8 hex digits (the first in the lowest byte) into 4 bytes (the first in the lowest
-  /// byte), and clears the high bit of each byte in `validity` that isn't a hex digit.
   private static func bytes(fromHexDigits digits: UInt64, validity: inout UInt64) -> UInt32 {
     let isDigit = (digits &+ 0x5050_5050_5050_5050) & ~(digits &+ 0x4646_4646_4646_4646)
     let lowercased = digits | 0x2020_2020_2020_2020
     let isLetter = (lowercased &+ 0x1F1F_1F1F_1F1F_1F1F) & ~(lowercased &+ 0x1919_1919_1919_1919)
-    // NB: Non-ASCII bytes can carry into their neighbors above, but they clear their own bit here.
     validity &= (isDigit | isLetter) & ~digits
 
     let letterOffsets = ((digits >> 6) & 0x0101_0101_0101_0101) &* 9
@@ -940,9 +921,6 @@ extension UUIDV7 {
     return withUnsafeBytes(of: string) { String(decoding: $0, as: UTF8.self) }
   }
 
-  /// The 8 hex digits of the 4 bytes at `offset`, with the first digit in the lowest byte.
-  ///
-  /// The letters are uppercase when `letterOffset` is 7, and lowercase when it's 0x27.
   private static func hexDigits(
     of uuid: UnsafeRawBufferPointer,
     at offset: Int,
@@ -1081,8 +1059,6 @@ private enum PlatformLock {
 
 // MARK: - GenerationState
 
-/// The state of UUID generation, which shares a single lock so that generating a monotonic UUID
-/// only acquires one lock.
 private struct GenerationState {
   static nonisolated(unsafe) let shared = _UUIDV7Lock(Self())
 
@@ -1094,7 +1070,6 @@ private struct GenerationState {
 
 // MARK: - MonotonicityState
 
-/// See https://www.rfc-editor.org/rfc/rfc9562.html#section-6.2-5.1
 private struct MonotonicityState: Sendable {
   private var previousTimestamp = UInt64(0)
   private var sequence = UInt16(0)
@@ -1167,8 +1142,6 @@ extension RandomUUIDBytesGenerator {
     }
   #else
     private func readBytes() {
-      // NB: A single read from /dev/urandom is faster than getentropy, which fills at most 256
-      // bytes per call.
       let fd = open("/dev/urandom", O_RDONLY)
       read(fd, self.cache, MemoryLayout<UUIDBytes>.size * Self.cacheSize)
       close(fd)
