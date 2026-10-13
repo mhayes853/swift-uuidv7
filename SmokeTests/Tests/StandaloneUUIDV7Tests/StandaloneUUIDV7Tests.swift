@@ -33,6 +33,7 @@ struct `Standalone UUIDV7 tests` {
     #expect(UUIDVariant(uuid: first.uuid) == .rfc9562)
     #expect(UUIDV7(first.rawValue) == first)
     #expect(UUIDV7(uuidString: second.uuidString) == second)
+    #expect(second.lowercasedUUIDString == second.uuidString.lowercased())
     #expect(Set([first, first, second]).count == 2)
   }
 }

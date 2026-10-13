@@ -42,10 +42,11 @@ typedef struct {
 /// Returns whether the CPU supports the instructions that `uuidv7_encode` and `uuidv7_decode` use.
 static inline bool uuidv7_is_supported(void);
 
-/// Writes the 36 byte uppercase hyphenated string representation of a UUID.
+/// Writes the 36 byte hyphenated string representation of a UUID, with lowercase hex digits when
+/// `lowercased` is true, and uppercase hex digits otherwise.
 ///
 /// Only call this when `uuidv7_is_supported` returns true.
-static inline void uuidv7_encode(uuidv7_bytes uuid, void *string);
+static inline void uuidv7_encode(uuidv7_bytes uuid, void *string, bool lowercased);
 
 /// Parses the 36 byte string representation of a UUID, which has 32 case-insensitive hex digits
 /// and hyphens at positions 8, 13, 18, and 23.
@@ -56,8 +57,13 @@ static inline uuidv7_decode_result uuidv7_decode(const void *string);
 // MARK: - Shared Constants
 
 /// The uppercase hex digit of each nibble.
-static const uint8_t uuidv7_hex_digits[16] = {
+static const uint8_t uuidv7_uppercase_hex_digits[16] = {
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
+};
+
+/// The lowercase hex digit of each nibble.
+static const uint8_t uuidv7_lowercase_hex_digits[16] = {
+  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'
 };
 
 // NB: A character is a hex digit when the classes of its high and low nibbles intersect. The class
@@ -81,7 +87,7 @@ static inline bool uuidv7_is_supported(void) {
   return true;
 }
 
-static inline void uuidv7_encode(uuidv7_bytes uuid, void *string) {
+static inline void uuidv7_encode(uuidv7_bytes uuid, void *string, bool lowercased) {
   // Shuffles of the hex digits, where index k is the high nibble digit of byte k, and index 16 + k
   // is its low nibble digit. Out of range indices leave hyphens in place.
   const uint8x16_t shuffle_0_16 = {
@@ -92,7 +98,9 @@ static inline void uuidv7_encode(uuidv7_bytes uuid, void *string) {
   };
   const uint8x16_t shuffle_32_36 = {14, 30, 15, 31};
 
-  const uint8x16_t hex_digits = vld1q_u8(uuidv7_hex_digits);
+  const uint8x16_t hex_digits = vld1q_u8(
+    lowercased ? uuidv7_lowercase_hex_digits : uuidv7_uppercase_hex_digits
+  );
   uint64x2_t words = vcombine_u64(vcreate_u64(uuid.words[0]), vcreate_u64(uuid.words[1]));
   uint8x16_t bytes = vreinterpretq_u8_u64(words);
   uint8x16x2_t digits = {{
@@ -197,7 +205,11 @@ static inline __attribute__((target("avx2"), always_inline)) __m256i uuidv7_avx2
   return _mm256_broadcastsi128_si256(_mm_loadu_si128((const __m128i *)bytes));
 }
 
-static inline __attribute__((target("avx2"))) void uuidv7_encode(uuidv7_bytes uuid, void *string) {
+static inline __attribute__((target("avx2"))) void uuidv7_encode(
+  uuidv7_bytes uuid,
+  void *string,
+  bool lowercased
+) {
   // Shuffles of the hex digits of the high and low nibbles, where index k is the digit of byte k.
   // The first half is string[0..<16], and the second half is string[16..<32]. Out of range indices
   // leave zeros for the digits of the other nibble and the hyphens.
@@ -210,7 +222,9 @@ static inline __attribute__((target("avx2"))) void uuidv7_encode(uuidv7_bytes uu
     0xFF, 7, 0xFF, 0xFF, 8, 0xFF, 9, 0xFF, 0xFF, 10, 0xFF, 11, 0xFF, 12, 0xFF, 13
   };
 
-  const __m256i hex_digits = uuidv7_avx2_broadcast(uuidv7_hex_digits);
+  const __m256i hex_digits = uuidv7_avx2_broadcast(
+    lowercased ? uuidv7_lowercase_hex_digits : uuidv7_uppercase_hex_digits
+  );
   const __m256i hyphens = _mm256_and_si256(
     uuidv7_avx2_load(uuidv7_avx2_hyphen_positions),
     _mm256_set1_epi8('-')
