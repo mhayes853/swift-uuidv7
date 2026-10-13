@@ -793,10 +793,18 @@ extension UUIDV7 {
         return Self.portableUUIDString(uuid, lowercased: lowercased)
       }
       let uuid = uuidv7_bytes(words: unsafeBitCast(uuid, to: (UInt64, UInt64).self))
-      return String(unsafeUninitializedCapacity: 36) { buffer in
-        uuidv7_encode(uuid, buffer.baseAddress!, lowercased)
-        return 36
-      }
+      #if arch(x86_64)
+        var string: (UInt64, UInt64, UInt64, UInt64, UInt32) = (0, 0, 0, 0, 0)
+        return withUnsafeMutableBytes(of: &string) { string in
+          uuidv7_encode(uuid, string.baseAddress!, lowercased)
+          return String(decoding: UnsafeRawBufferPointer(string), as: UTF8.self)
+        }
+      #else
+        return String(unsafeUninitializedCapacity: 36) { buffer in
+          uuidv7_encode(uuid, buffer.baseAddress!, lowercased)
+          return 36
+        }
+      #endif
     }
   }
 #else
