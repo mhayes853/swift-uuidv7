@@ -793,18 +793,11 @@ extension UUIDV7 {
         return Self.portableUUIDString(uuid, lowercased: lowercased)
       }
       let uuid = uuidv7_bytes(words: unsafeBitCast(uuid, to: (UInt64, UInt64).self))
-      #if arch(x86_64)
-        var string: (UInt64, UInt64, UInt64, UInt64, UInt32) = (0, 0, 0, 0, 0)
-        return withUnsafeMutableBytes(of: &string) { string in
-          uuidv7_encode(uuid, string.baseAddress!, lowercased)
-          return String(decoding: UnsafeRawBufferPointer(string), as: UTF8.self)
-        }
-      #else
-        return String(unsafeUninitializedCapacity: 36) { buffer in
-          uuidv7_encode(uuid, buffer.baseAddress!, lowercased)
-          return 36
-        }
-      #endif
+      var string: (UInt64, UInt64, UInt64, UInt64, UInt32) = (0, 0, 0, 0, 0)
+      return withUnsafeMutableBytes(of: &string) { string in
+        uuidv7_encode(uuid, string.baseAddress!, lowercased)
+        return String(decoding: UnsafeRawBufferPointer(string), as: UTF8.self)
+      }
     }
   }
 #else
@@ -1078,6 +1071,7 @@ private struct GenerationState {
 
 // MARK: - MonotonicityState
 
+/// See https://www.rfc-editor.org/rfc/rfc9562.html#section-6.2-5.1
 private struct MonotonicityState: Sendable {
   private var previousTimestamp = UInt64(0)
   private var sequence = UInt16(0)

@@ -280,6 +280,7 @@ struct `UUIDV7 tests` {
   @Test
   func `Monotonically Increases When System Time Is Frozen`() {
     let now = UUIDV7._platformTimeIntervalSince1970()
+    // NB: More calls than the 12 bit counter can hold, so the counter rolls into the timestamp.
     var u1 = UUIDV7(_systemNow: now)
     for _ in 0..<10_000 {
       let u2 = UUIDV7(_systemNow: now)
@@ -430,6 +431,7 @@ struct `UUIDV7 tests` {
 
     @Test
     func `Offset Does Not Shift Subsequent UUIDs`() async {
+      // NB: Runs in a separate process so that other tests cannot move the shared monotonic state.
       await #expect(processExitsWith: .success) {
         let now = UUIDV7._platformTimeIntervalSince1970()
         _ = UUIDV7(_systemNow: now, offset: .seconds(-86_400))
