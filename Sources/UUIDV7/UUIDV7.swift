@@ -1170,6 +1170,9 @@ private struct RandomUUIDBytesGenerator {
 
   private var cache = UnsafeMutablePointer<UUIDBytes>.allocate(capacity: Self.cacheSize)
   private var cacheIndex = 0
+  #if os(Linux) && canImport(Glibc)
+    private let getrandom = Self.getrandom()
+  #endif
 }
 
 extension RandomUUIDBytesGenerator {
@@ -1205,9 +1208,51 @@ extension RandomUUIDBytesGenerator {
     }
   #else
     private func readBytes() {
-      let fd = open("/dev/urandom", O_RDONLY)
-      read(fd, self.cache, MemoryLayout<UUIDBytes>.size * Self.cacheSize)
-      close(fd)
+      #if os(Linux) && canImport(Glibc)
+        if let getrandom = self.getrandom, self.fillBytes(using: { getrandom($0, $1, 0) }) {
+          return
+        }
+      #endif
+      let fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC)
+      defer {
+        if fd >= 0 {
+          close(fd)
+        }
+      }
+      if fd >= 0, self.fillBytes(using: { read(fd, $0, $1) }) {
+        return
+      }
+      var generator = SystemRandomNumberGenerator()
+      for index in 0..<Self.cacheSize {
+        self.cache[index] = UUIDV7.randomBytes(using: &generator)
+      }
+    }
+
+    private func fillBytes(using read: (UnsafeMutableRawPointer, Int) -> Int) -> Bool {
+      let buffer = UnsafeMutableRawPointer(self.cache)
+      let byteCount = MemoryLayout<UUIDBytes>.size * Self.cacheSize
+      var offset = 0
+      while offset < byteCount {
+        let count = read(buffer + offset, byteCount - offset)
+        if count > 0 {
+          offset += count
+        } else if count == 0 || errno != EINTR {
+          return false
+        }
+      }
+      return true
     }
   #endif
 }
+
+#if os(Linux) && canImport(Glibc)
+  extension RandomUUIDBytesGenerator {
+    private typealias GetRandom = @convention(c) (UnsafeMutableRawPointer?, Int, UInt32) -> Int
+
+    private static func getrandom() -> GetRandom? {
+      // NB: Glibc doesn't import sys/random.h, so getrandom is looked up at runtime. A nil handle
+      // is RTLD_DEFAULT, and the lookup fails on glibc versions older than 2.25.
+      dlsym(nil, "getrandom").map { unsafeBitCast($0, to: GetRandom.self) }
+    }
+  }
+#endif
