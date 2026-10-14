@@ -142,7 +142,7 @@ extension UUIDV7 {
   /// The 12 random bits that comprise of the `rand_a` field from RFC 9562 are replaced by a 12 bit
   /// counter as outlined by section 6.2 of the RFC.
   public init() {
-    self.init(_systemNow: Self._platformTimeIntervalSince1970())
+    self.init(.clock(SystemClock.reading()), 0)
   }
 
   /// Creates a UUID with the current date offset by the specified duration as the timestamp.
@@ -153,7 +153,7 @@ extension UUIDV7 {
   ///
   /// - Parameter offset: A duration to add to the current date.
   public init(offset: Duration) {
-    self.init(_systemNow: Self._platformTimeIntervalSince1970(), offset: offset)
+    self.init(.clock(SystemClock.reading()), offset.uuidV7Milliseconds)
   }
 
   /// Creates a UUID with the current date as the timestamp, using the specified random number
@@ -172,20 +172,20 @@ extension UUIDV7 {
   ///   - offset: A duration to add to the current date.
   public init(using generator: inout some RandomNumberGenerator, offset: Duration = .zero) {
     let bytes = Self.randomBytes(using: &generator)
-    self.init(Self._platformTimeIntervalSince1970(), offset.uuidV7Milliseconds, bytes)
+    self.init(.clock(SystemClock.reading()), offset.uuidV7Milliseconds, bytes)
   }
 
   package init(_systemNow timeInterval: TimeInterval) {
-    self.init(timeInterval, 0)
+    self.init(.timeInterval(timeInterval), 0)
   }
 
   package init(_systemNow timeInterval: TimeInterval, offset: Duration) {
-    self.init(timeInterval, offset.uuidV7Milliseconds)
+    self.init(.timeInterval(timeInterval), offset.uuidV7Milliseconds)
   }
 
   package init(_clampingOffset offset: Duration) {
     self.init(
-      Self._platformTimeIntervalSince1970(),
+      .clock(SystemClock.reading()),
       offset.uuidV7Milliseconds,
       clampsToEpoch: true
     )
@@ -197,7 +197,7 @@ extension UUIDV7 {
   ) {
     let bytes = Self.randomBytes(using: &generator)
     self.init(
-      Self._platformTimeIntervalSince1970(),
+      .clock(SystemClock.reading()),
       offset.uuidV7Milliseconds,
       bytes,
       clampsToEpoch: true
@@ -205,27 +205,25 @@ extension UUIDV7 {
   }
 
   private init(
-    _ systemTimeInterval: TimeInterval,
+    _ systemTime: SystemTime,
     _ offsetMillis: Int64,
     clampsToEpoch: Bool = false
   ) {
     let (millis, sequence, bytes) = GenerationState.shared.withLock { state in
-      let (millis, sequence) = state.monotonicity.nextMillisWithSequence(
-        timeIntervalSince1970: systemTimeInterval
-      )
+      let (millis, sequence) = state.nextMillisWithSequence(at: systemTime)
       return (millis, sequence, state.random.next())
     }
     self.init(millis, sequence, offsetMillis, bytes, clampsToEpoch: clampsToEpoch)
   }
 
   private init(
-    _ systemTimeInterval: TimeInterval,
+    _ systemTime: SystemTime,
     _ offsetMillis: Int64,
     _ bytes: UUIDBytes,
     clampsToEpoch: Bool = false
   ) {
     let (millis, sequence) = GenerationState.shared.withLock {
-      $0.monotonicity.nextMillisWithSequence(timeIntervalSince1970: systemTimeInterval)
+      $0.nextMillisWithSequence(at: systemTime)
     }
     self.init(millis, sequence, offsetMillis, bytes, clampsToEpoch: clampsToEpoch)
   }
@@ -1063,11 +1061,76 @@ private enum PlatformLock {
 private struct GenerationState {
   static nonisolated(unsafe) let shared = _UUIDV7Lock(Self())
 
+  var clock = SystemClock()
   var monotonicity = MonotonicityState()
   var random = RandomUUIDBytesGenerator()
 
   private init() {}
 }
+
+extension GenerationState {
+  mutating func nextMillisWithSequence(at time: SystemTime) -> (UInt64, UInt16) {
+    let millis = switch time {
+    case .clock(let reading): self.clock.millisSince1970(at: reading)
+    case .timeInterval(let timeInterval): UInt64(timeInterval * 1000)
+    }
+    return self.monotonicity.nextMillisWithSequence(millisSince1970: millis)
+  }
+}
+
+// MARK: - SystemTime
+
+private enum SystemTime {
+  case clock(UInt64)
+  case timeInterval(TimeInterval)
+}
+
+// MARK: - SystemClock
+
+#if canImport(Darwin)
+  private struct SystemClock {
+    private let timebase = Self.timebase()
+    private var lastReading = UInt64(0)
+    private var lastNanosSince1970 = Int64(0)
+
+    static func reading() -> UInt64 {
+      mach_continuous_time()
+    }
+
+    mutating func millisSince1970(at reading: UInt64) -> UInt64 {
+      let elapsedTicks = Int64(bitPattern: reading &- self.lastReading)
+      let elapsedNanos = elapsedTicks * Int64(self.timebase.numer) / Int64(self.timebase.denom)
+      if elapsedNanos > 1_000_000 {
+        self.readWallClock()
+        return UInt64(self.lastNanosSince1970 / 1_000_000)
+      }
+      return UInt64((self.lastNanosSince1970 + elapsedNanos) / 1_000_000)
+    }
+
+    private mutating func readWallClock() {
+      var time = timeval()
+      self.lastReading = Self.reading()
+      gettimeofday(&time, nil)
+      self.lastNanosSince1970 = Int64(time.tv_sec) * 1_000_000_000 + Int64(time.tv_usec) * 1000
+    }
+
+    private static func timebase() -> mach_timebase_info_data_t {
+      var timebase = mach_timebase_info_data_t()
+      mach_timebase_info(&timebase)
+      return timebase
+    }
+  }
+#else
+  private struct SystemClock {
+    static func reading() -> UInt64 {
+      UInt64(UUIDV7._platformTimeIntervalSince1970() * 1000)
+    }
+
+    func millisSince1970(at reading: UInt64) -> UInt64 {
+      reading
+    }
+  }
+#endif
 
 // MARK: - MonotonicityState
 
@@ -1079,10 +1142,8 @@ private struct MonotonicityState: Sendable {
 }
 
 extension MonotonicityState {
-  mutating func nextMillisWithSequence(
-    timeIntervalSince1970 timeInterval: TimeInterval
-  ) -> (UInt64, UInt16) {
-    var currentMillis = UInt64(timeInterval * 1000) &+ self.offset
+  mutating func nextMillisWithSequence(millisSince1970 millis: UInt64) -> (UInt64, UInt16) {
+    var currentMillis = millis &+ self.offset
     if self.previousTimestamp == currentMillis {
       self.sequence &+= 1
     } else if currentMillis < self.previousTimestamp {
