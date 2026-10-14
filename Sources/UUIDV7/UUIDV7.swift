@@ -781,13 +781,13 @@ extension UUIDV7 {
 #if canImport(CUUIDV7) && (arch(arm64) || arch(x86_64)) && !os(Windows)
   extension UUIDV7 {
     private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
-      guard uuidv7_is_supported() else { return Self.portableUUIDBytes(fromUTF8: utf8) }
+      guard uuidv7_is_simd_supported() else { return Self.portableUUIDBytes(fromUTF8: utf8) }
       let result = uuidv7_decode(utf8.baseAddress!)
       return result.is_valid ? unsafeBitCast(result.bytes.words, to: UUIDBytes.self) : nil
     }
 
     package static func _uuidString(_ uuid: UUIDBytes, lowercased: Bool) -> String {
-      guard uuidv7_is_supported() else {
+      guard uuidv7_is_simd_supported() else {
         return Self.portableUUIDString(uuid, lowercased: lowercased)
       }
       let uuid = uuidv7_bytes(words: unsafeBitCast(uuid, to: (UInt64, UInt64).self))
@@ -880,44 +880,41 @@ extension UUIDV7 {
 
   private static func portableUUIDString(_ uuid: UUIDBytes, lowercased: Bool) -> String {
     let letterOffset: UInt64 = lowercased ? 0x27 : 0x07
-    var string: (UInt64, UInt64, UInt64, UInt64, UInt32) = (0, 0, 0, 0, 0)
-    withUnsafeBytes(of: uuid) { uuid in
-      withUnsafeMutableBytes(of: &string) { string in
-        let digits = (
-          Self.hexDigits(of: uuid, at: 0, letterOffset: letterOffset),
-          Self.hexDigits(of: uuid, at: 4, letterOffset: letterOffset),
-          Self.hexDigits(of: uuid, at: 8, letterOffset: letterOffset),
-          Self.hexDigits(of: uuid, at: 12, letterOffset: letterOffset)
-        )
-        string.storeBytes(of: digits.0.littleEndian, toByteOffset: 0, as: UInt64.self)
-        string.storeBytes(of: Self.hyphen, toByteOffset: 8, as: UInt8.self)
-        string.storeBytes(
-          of: UInt32(truncatingIfNeeded: digits.1).littleEndian,
-          toByteOffset: 9,
-          as: UInt32.self
-        )
-        string.storeBytes(of: Self.hyphen, toByteOffset: 13, as: UInt8.self)
-        string.storeBytes(
-          of: UInt32(truncatingIfNeeded: digits.1 >> 32).littleEndian,
-          toByteOffset: 14,
-          as: UInt32.self
-        )
-        string.storeBytes(of: Self.hyphen, toByteOffset: 18, as: UInt8.self)
-        string.storeBytes(
-          of: UInt32(truncatingIfNeeded: digits.2).littleEndian,
-          toByteOffset: 19,
-          as: UInt32.self
-        )
-        string.storeBytes(of: Self.hyphen, toByteOffset: 23, as: UInt8.self)
-        string.storeBytes(
-          of: UInt32(truncatingIfNeeded: digits.2 >> 32).littleEndian,
-          toByteOffset: 24,
-          as: UInt32.self
-        )
-        string.storeBytes(of: digits.3.littleEndian, toByteOffset: 28, as: UInt64.self)
-      }
+    let digits = withUnsafeBytes(of: uuid) { uuid in
+      (
+        Self.hexDigits(of: uuid, at: 0, letterOffset: letterOffset),
+        Self.hexDigits(of: uuid, at: 4, letterOffset: letterOffset),
+        Self.hexDigits(of: uuid, at: 8, letterOffset: letterOffset),
+        Self.hexDigits(of: uuid, at: 12, letterOffset: letterOffset)
+      )
     }
-    return withUnsafeBytes(of: string) { String(decoding: $0, as: UTF8.self) }
+    return String(unsafeUninitializedCapacity: 36) { buffer in
+      let string = UnsafeMutableRawBufferPointer(buffer)
+      string.storeBytes(of: digits.0.littleEndian, toByteOffset: 0, as: UInt64.self)
+      Self.storeHexDigits(digits.1, in: string, at: 8)
+      Self.storeHexDigits(digits.2, in: string, at: 18)
+      string.storeBytes(of: digits.3.littleEndian, toByteOffset: 28, as: UInt64.self)
+      return 36
+    }
+  }
+
+  private static func storeHexDigits(
+    _ digits: UInt64,
+    in string: UnsafeMutableRawBufferPointer,
+    at offset: Int
+  ) {
+    string.storeBytes(of: Self.hyphen, toByteOffset: offset, as: UInt8.self)
+    string.storeBytes(
+      of: UInt32(truncatingIfNeeded: digits).littleEndian,
+      toByteOffset: offset + 1,
+      as: UInt32.self
+    )
+    string.storeBytes(of: Self.hyphen, toByteOffset: offset + 5, as: UInt8.self)
+    string.storeBytes(
+      of: UInt32(truncatingIfNeeded: digits >> 32).littleEndian,
+      toByteOffset: offset + 6,
+      as: UInt32.self
+    )
   }
 
   private static func hexDigits(
@@ -1171,9 +1168,7 @@ private struct RandomUUIDBytesGenerator {
 
   private var cache = UnsafeMutablePointer<UInt64>.allocate(capacity: Self.cacheSize)
   private var cacheIndex = 0
-  #if os(Linux) && canImport(Glibc)
-    private let getrandom = Self.getrandom()
-  #endif
+  private var systemGenerator: SystemRandomNumberGenerator?
 }
 
 extension RandomUUIDBytesGenerator {
@@ -1186,10 +1181,13 @@ extension RandomUUIDBytesGenerator {
   }
 
   private mutating func nextWord() -> UInt64 {
-    defer { self.cacheIndex = (self.cacheIndex + 1) % Self.cacheSize }
-    if self.cacheIndex == 0 {
+    if self.cacheIndex == 0, self.systemGenerator == nil {
       self.readBytes()
     }
+    if let word = self.systemGenerator?.next() {
+      return word
+    }
+    defer { self.cacheIndex = (self.cacheIndex + 1) % Self.cacheSize }
     return self.cache[self.cacheIndex]
   }
 }
@@ -1216,9 +1214,9 @@ extension RandomUUIDBytesGenerator {
       arc4random_buf(self.cache, Self.cacheByteCount)
     }
   #else
-    private func readBytes() {
+    private mutating func readBytes() {
       #if os(Linux) && canImport(Glibc)
-        if let getrandom = self.getrandom, self.fillBytes(using: { getrandom($0, $1, 0) }) {
+        if let getrandom = Self.getrandom, self.fillBytes(using: { getrandom($0, $1, 0) }) {
           return
         }
       #endif
@@ -1231,10 +1229,7 @@ extension RandomUUIDBytesGenerator {
       if fd >= 0, self.fillBytes(using: { read(fd, $0, $1) }) {
         return
       }
-      var generator = SystemRandomNumberGenerator()
-      for index in 0..<Self.cacheSize {
-        self.cache[index] = generator.next()
-      }
+      self.systemGenerator = SystemRandomNumberGenerator()
     }
 
     private func fillBytes(using read: (UnsafeMutableRawPointer, Int) -> Int) -> Bool {
@@ -1257,10 +1252,11 @@ extension RandomUUIDBytesGenerator {
   extension RandomUUIDBytesGenerator {
     private typealias GetRandom = @convention(c) (UnsafeMutableRawPointer?, Int, UInt32) -> Int
 
-    private static func getrandom() -> GetRandom? {
+    // NB: C function pointers are Sendable, so this immutable lookup can be shared safely.
+    private static let getrandom: GetRandom? = {
       // NB: Glibc doesn't import sys/random.h, so getrandom is looked up at runtime. A nil handle
       // is RTLD_DEFAULT, and the lookup fails on glibc versions older than 2.25.
-      dlsym(nil, "getrandom").map { unsafeBitCast($0, to: GetRandom.self) }
-    }
+      return dlsym(nil, "getrandom").map { unsafeBitCast($0, to: GetRandom.self) }
+    }()
   }
 #endif

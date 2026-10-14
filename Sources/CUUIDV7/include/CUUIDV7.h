@@ -27,7 +27,7 @@ typedef struct {
   bool is_valid;
 } uuidv7_decode_result;
 
-static inline bool uuidv7_is_supported(void);
+static inline bool uuidv7_is_simd_supported(void);
 
 static inline void uuidv7_encode(uuidv7_bytes uuid, void *string, bool lowercased);
 
@@ -53,7 +53,7 @@ static const uint8_t uuidv7_low_nibble_classes[16] = {
 
 // MARK: - 64-bit ARM
 
-static inline bool uuidv7_is_supported(void) {
+static inline bool uuidv7_is_simd_supported(void) {
   return true;
 }
 
@@ -133,7 +133,7 @@ static inline uuidv7_decode_result uuidv7_decode(const void *string) {
 
 // MARK: - x86-64
 
-static inline bool uuidv7_is_supported(void) {
+static inline bool uuidv7_is_simd_supported(void) {
 #if defined(__AVX2__)
   return true;
 #else
@@ -163,13 +163,9 @@ static inline __attribute__((target("avx2"))) void uuidv7_encode(
   void *string,
   bool lowercased
 ) {
-  static const uint8_t high_shuffle[32] = {
-    0, 0xFF, 1, 0xFF, 2, 0xFF, 3, 0xFF, 0xFF, 4, 0xFF, 5, 0xFF, 0xFF, 6, 0xFF,
-    7, 0xFF, 0xFF, 8, 0xFF, 9, 0xFF, 0xFF, 10, 0xFF, 11, 0xFF, 12, 0xFF, 13, 0xFF
-  };
-  static const uint8_t low_shuffle[32] = {
-    0xFF, 0, 0xFF, 1, 0xFF, 2, 0xFF, 3, 0xFF, 0xFF, 4, 0xFF, 5, 0xFF, 0xFF, 6,
-    0xFF, 7, 0xFF, 0xFF, 8, 0xFF, 9, 0xFF, 0xFF, 10, 0xFF, 11, 0xFF, 12, 0xFF, 13
+  static const uint8_t shuffle[32] = {
+    0, 1, 2, 3, 4, 5, 6, 7, 0xFF, 8, 9, 10, 11, 0xFF, 12, 13,
+    0, 1, 0xFF, 2, 3, 4, 5, 0xFF, 6, 7, 8, 9, 10, 11, 12, 13
   };
 
   const __m256i hex_digits = uuidv7_avx2_broadcast(
@@ -179,35 +175,39 @@ static inline __attribute__((target("avx2"))) void uuidv7_encode(
     uuidv7_avx2_load(uuidv7_avx2_hyphen_positions),
     _mm256_set1_epi8('-')
   );
-  const __m256i low_nibble = _mm256_set1_epi8(0x0F);
 
-  __m128i words = _mm_set_epi64x((long long)uuid.words[1], (long long)uuid.words[0]);
-  __m256i bytes = _mm256_broadcastsi128_si256(words);
-  __m256i high_nibbles = _mm256_and_si256(_mm256_srli_epi16(bytes, 4), low_nibble);
-  __m256i high = _mm256_shuffle_epi8(hex_digits, high_nibbles);
-  __m256i low = _mm256_shuffle_epi8(hex_digits, _mm256_and_si256(bytes, low_nibble));
+  __m128i bytes = _mm_set_epi64x((long long)uuid.words[1], (long long)uuid.words[0]);
+  // Widen each byte, then move its low nibble into the high byte without a mask.
+  __m256i words = _mm256_cvtepu8_epi16(bytes);
+  __m256i nibbles = _mm256_srli_epi16(
+    _mm256_or_si256(words, _mm256_slli_epi16(words, 12)), 4
+  );
+  __m256i hex = _mm256_shuffle_epi8(hex_digits, nibbles);
+  __m128i digits_0_16 = _mm256_castsi256_si128(hex);
+  __m128i digits_16_32 = _mm256_extracti128_si256(hex, 1);
 
+  // The second output lane starts with byte 7's digits from the first input lane.
+  __m256i digits = _mm256_inserti128_si256(
+    _mm256_castsi128_si256(digits_0_16),
+    _mm_alignr_epi8(digits_16_32, digits_0_16, 14),
+    1
+  );
   uint8_t *characters = string;
-  __m128i high_0_16 = _mm256_castsi256_si128(high);
-  __m128i low_0_16 = _mm256_castsi256_si128(low);
-  _mm_storeu_si128((__m128i *)(characters + 20), _mm_unpackhi_epi8(high_0_16, low_0_16));
-
-  high = _mm256_shuffle_epi8(high, uuidv7_avx2_load(high_shuffle));
-  low = _mm256_shuffle_epi8(low, uuidv7_avx2_load(low_shuffle));
-  __m256i string_0_32 = _mm256_or_si256(_mm256_or_si256(high, low), hyphens);
-  _mm256_storeu_si256((__m256i *)characters, string_0_32);
+  _mm_storeu_si128((__m128i *)(characters + 20), digits_16_32);
+  _mm256_storeu_si256((__m256i *)characters, _mm256_or_si256(
+    _mm256_shuffle_epi8(digits, uuidv7_avx2_load(shuffle)), hyphens
+  ));
 }
 
 static inline __attribute__((target("avx2"))) uuidv7_decode_result uuidv7_decode(
   const void *string
 ) {
-  static const uint8_t high_shuffle[32] = {
-    0, 2, 4, 6, 9, 11, 14, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 8, 0xFF,
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0, 3, 5, 8, 10, 12, 14, 0xFF, 2
+  static const uint8_t shuffle[32] = {
+    0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 8, 13,
+    0, 1, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 2, 7
   };
-  static const uint8_t low_shuffle[32] = {
-    1, 3, 5, 7, 10, 12, 15, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 13, 0xFF,
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 1, 4, 6, 9, 11, 13, 15, 0xFF, 7
+  static const uint8_t byte_shuffle[16] = {
+    0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 7, 15
   };
 
   const __m256i hyphen_positions = uuidv7_avx2_load(uuidv7_avx2_hyphen_positions);
@@ -233,10 +233,12 @@ static inline __attribute__((target("avx2"))) uuidv7_decode_result uuidv7_decode
   }
 
   __m256i values = _mm256_add_epi8(digits, offsets);
-  __m256i high = _mm256_shuffle_epi8(values, uuidv7_avx2_load(high_shuffle));
-  __m256i low = _mm256_shuffle_epi8(values, uuidv7_avx2_load(low_shuffle));
-  __m256i halves = _mm256_or_si256(_mm256_slli_epi16(high, 4), low);
-  __m128i bytes = _mm_or_si128(_mm256_castsi256_si128(halves), _mm256_extracti128_si256(halves, 1));
+  __m256i nibbles = _mm256_shuffle_epi8(values, uuidv7_avx2_load(shuffle));
+  __m256i pairs = _mm256_maddubs_epi16(nibbles, _mm256_set1_epi16(0x0110));
+  __m128i packed = _mm_packus_epi16(
+    _mm256_castsi256_si128(pairs), _mm256_extracti128_si256(pairs, 1)
+  );
+  __m128i bytes = _mm_shuffle_epi8(packed, _mm_loadu_si128((const __m128i *)byte_shuffle));
   uuidv7_decode_result result = {{{0, 0}}, true};
   _mm_storeu_si128((__m128i *)result.bytes.words, bytes);
   return result;
