@@ -224,6 +224,14 @@ struct `UUIDV7 tests` {
   }
 
   @Test
+  func `Generated UUIDs Have Unique Random Bits`() {
+    let randBs = (0..<10_000).map { _ in
+      withUnsafeBytes(of: UUIDV7().uuid) { $0.loadUnaligned(fromByteOffset: 8, as: UInt64.self) }
+    }
+    #expect(Set(randBs).count == randBs.count)
+  }
+
+  @Test
   func `Generated UUIDs Are Valid UUIDV7s`() {
     let uuid = UUIDV7()
     #expect(UUIDV7(uuid: uuid.uuid) == uuid)

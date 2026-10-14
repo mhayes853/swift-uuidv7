@@ -211,7 +211,7 @@ extension UUIDV7 {
   ) {
     let (millis, sequence, bytes) = GenerationState.shared.withLock { state in
       let (millis, sequence) = state.nextMillisWithSequence(at: systemTime)
-      return (millis, sequence, state.random.next())
+      return (millis, sequence, state.random.nextRandB())
     }
     self.init(millis, sequence, offsetMillis, bytes, clampsToEpoch: clampsToEpoch)
   }
@@ -1166,9 +1166,10 @@ extension MonotonicityState {
 // MARK: - RandomUUIDBytesGenerator
 
 private struct RandomUUIDBytesGenerator {
-  private static let cacheSize = 256
+  private static let cacheSize = 512
+  private static let cacheByteCount = MemoryLayout<UInt64>.size * Self.cacheSize
 
-  private var cache = UnsafeMutablePointer<UUIDBytes>.allocate(capacity: Self.cacheSize)
+  private var cache = UnsafeMutablePointer<UInt64>.allocate(capacity: Self.cacheSize)
   private var cacheIndex = 0
   #if os(Linux) && canImport(Glibc)
     private let getrandom = Self.getrandom()
@@ -1177,6 +1178,14 @@ private struct RandomUUIDBytesGenerator {
 
 extension RandomUUIDBytesGenerator {
   mutating func next() -> UUIDBytes {
+    unsafeBitCast((self.nextWord(), self.nextWord()), to: UUIDBytes.self)
+  }
+
+  mutating func nextRandB() -> UUIDBytes {
+    unsafeBitCast((UInt64(0), self.nextWord()), to: UUIDBytes.self)
+  }
+
+  private mutating func nextWord() -> UInt64 {
     defer { self.cacheIndex = (self.cacheIndex + 1) % Self.cacheSize }
     if self.cacheIndex == 0 {
       self.readBytes()
@@ -1191,7 +1200,7 @@ extension RandomUUIDBytesGenerator {
       BCryptGenRandom(
         nil,
         self.cache,
-        UInt32(MemoryLayout<UUIDBytes>.size * Self.cacheSize),
+        UInt32(Self.cacheByteCount),
         UInt32(BCRYPT_RNG_USE_ENTROPY_IN_BUFFER | BCRYPT_USE_SYSTEM_PREFERRED_RNG)
       )
     }
@@ -1199,12 +1208,12 @@ extension RandomUUIDBytesGenerator {
     private func readBytes() {
       _ = __wasi_random_get(
         self.cache,
-        __wasi_size_t(MemoryLayout<UUIDBytes>.size * Self.cacheSize)
+        __wasi_size_t(Self.cacheByteCount)
       )
     }
   #elseif canImport(Darwin) || os(Android) || os(FreeBSD) || os(OpenBSD)
     private func readBytes() {
-      arc4random_buf(self.cache, MemoryLayout<UUIDBytes>.size * Self.cacheSize)
+      arc4random_buf(self.cache, Self.cacheByteCount)
     }
   #else
     private func readBytes() {
@@ -1224,16 +1233,15 @@ extension RandomUUIDBytesGenerator {
       }
       var generator = SystemRandomNumberGenerator()
       for index in 0..<Self.cacheSize {
-        self.cache[index] = UUIDV7.randomBytes(using: &generator)
+        self.cache[index] = generator.next()
       }
     }
 
     private func fillBytes(using read: (UnsafeMutableRawPointer, Int) -> Int) -> Bool {
       let buffer = UnsafeMutableRawPointer(self.cache)
-      let byteCount = MemoryLayout<UUIDBytes>.size * Self.cacheSize
       var offset = 0
-      while offset < byteCount {
-        let count = read(buffer + offset, byteCount - offset)
+      while offset < Self.cacheByteCount {
+        let count = read(buffer + offset, Self.cacheByteCount - offset)
         if count > 0 {
           offset += count
         } else if count == 0 || errno != EINTR {
