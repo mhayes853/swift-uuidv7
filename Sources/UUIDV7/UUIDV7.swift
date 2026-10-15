@@ -29,7 +29,7 @@
   import Builtin
 #endif
 
-#if canImport(CUUIDV7) && (arch(arm64) || arch(x86_64)) && !os(Windows)
+#if canImport(CUUIDV7) && (arch(arm64) || (arch(x86_64) && !os(Android))) && !os(Windows)
   internal import CUUIDV7
 #endif
 
@@ -778,7 +778,7 @@ extension UUIDV7 {
   }
 }
 
-#if canImport(CUUIDV7) && (arch(arm64) || arch(x86_64)) && !os(Windows)
+#if canImport(CUUIDV7) && (arch(arm64) || (arch(x86_64) && !os(Android))) && !os(Windows)
   extension UUIDV7 {
     private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
       guard uuidv7_is_simd_supported() else { return Self.portableUUIDBytes(fromUTF8: utf8) }

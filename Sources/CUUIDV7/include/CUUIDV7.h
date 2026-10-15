@@ -5,7 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#if (defined(__aarch64__) || defined(__x86_64__)) && defined(__LP64__) && !defined(_WIN32)
+#if (defined(__aarch64__) || defined(__x86_64__)) && defined(__LP64__) && !defined(_WIN32) \
+  && !(defined(__ANDROID__) && defined(__x86_64__))
 
 #include <string.h>
 #if defined(__aarch64__)
