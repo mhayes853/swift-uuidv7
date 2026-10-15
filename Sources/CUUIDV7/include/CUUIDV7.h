@@ -16,8 +16,6 @@
 
 #pragma clang assume_nonnull begin
 
-// MARK: - Interface
-
 typedef struct {
   uint64_t words[2];
 } uuidv7_bytes;
@@ -32,8 +30,6 @@ static inline bool uuidv7_is_simd_supported(void);
 static inline void uuidv7_encode(uuidv7_bytes uuid, void *string, bool lowercased);
 
 static inline uuidv7_decode_result uuidv7_decode(const void *string);
-
-// MARK: - Shared Constants
 
 static const uint8_t uuidv7_uppercase_hex_digits[16] = {
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
@@ -50,8 +46,6 @@ static const uint8_t uuidv7_low_nibble_classes[16] = {
 };
 
 #if defined(__aarch64__)
-
-// MARK: - 64-bit ARM
 
 static inline bool uuidv7_is_simd_supported(void) {
   return true;
@@ -84,13 +78,24 @@ static inline void uuidv7_encode(uuidv7_bytes uuid, void *string, bool lowercase
   memcpy(characters + 32, &tail, 4);
 }
 
+static const uint8_t uuidv7_neon_hex_values[64] = {
+  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0, 0, 0, 0, 0, 0,
+  0, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+
 static inline uuidv7_decode_result uuidv7_decode(const void *string) {
-  const uint8x16_t high_indices = {0, 2, 4, 6, 9, 11, 14, 16, 19, 21, 24, 26, 28, 30, 32, 34};
-  const uint8x16_t low_indices = {1, 3, 5, 7, 10, 12, 15, 17, 20, 22, 25, 27, 29, 31, 33, 35};
-  const uint8x16_t hyphen_positions = {
-    8, 13, 18, 23, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+  static const uint8_t shuffles[64] = {
+    0, 2, 4, 6, 9, 11, 14, 16, 19, 21, 24, 26, 28, 30, 32, 34,
+    1, 3, 5, 7, 10, 12, 15, 17, 20, 22, 25, 27, 29, 31, 33, 35,
+    8, 13, 18, 23, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    '-', '-', '-', '-', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
   };
-  const uint8x16_t hyphen = vdupq_n_u8('-');
+
+  const uint8x16x4_t shuffle = vld1q_u8_x4(shuffles);
+  const uint8x16x4_t hex_values = vld1q_u8_x4(uuidv7_neon_hex_values);
+  const uint8x16_t zero = vdupq_n_u8('0');
 
   const uint8_t *characters = string;
   uint32_t tail;
@@ -100,38 +105,25 @@ static inline uuidv7_decode_result uuidv7_decode(const void *string) {
     vld1q_u8(characters + 16),
     vreinterpretq_u8_u32(vsetq_lane_u32(tail, vdupq_n_u32(0), 0))
   }};
-  uint8x16_t high = vqtbl3q_u8(string_0_36, high_indices);
-  uint8x16_t low = vqtbl3q_u8(string_0_36, low_indices);
+  uint8x16_t high = vqtbl3q_u8(string_0_36, shuffle.val[0]);
+  uint8x16_t low = vqtbl3q_u8(string_0_36, shuffle.val[1]);
+  high = vqtbl4q_u8(hex_values, vsubq_u8(high, zero));
+  low = vqtbl4q_u8(hex_values, vsubq_u8(low, zero));
 
   uint8x16x2_t string_0_32 = {{string_0_36.val[0], string_0_36.val[1]}};
-  uint8x16_t valid = vceqq_u8(vqtbx2q_u8(hyphen, string_0_32, hyphen_positions), hyphen);
-
-  const uint8x16_t high_nibble_classes = vld1q_u8(uuidv7_high_nibble_classes);
-  const uint8x16_t low_nibble_classes = vld1q_u8(uuidv7_low_nibble_classes);
-  const uint8x16_t low_nibble = vdupq_n_u8(0x0F);
-  uint8x16_t high_offsets = vqtbl1q_u8(high_nibble_classes, vshrq_n_u8(high, 4));
-  uint8x16_t low_offsets = vqtbl1q_u8(high_nibble_classes, vshrq_n_u8(low, 4));
-  uint8x16_t high_classes = vqtbl1q_u8(low_nibble_classes, vandq_u8(high, low_nibble));
-  uint8x16_t low_classes = vqtbl1q_u8(low_nibble_classes, vandq_u8(low, low_nibble));
-  valid = vandq_u8(valid, vtstq_u8(high_offsets, high_classes));
-  valid = vandq_u8(valid, vtstq_u8(low_offsets, low_classes));
-
-  uint8x8_t valid_bits = vshrn_n_u16(vreinterpretq_u16_u8(valid), 4);
-  if (vget_lane_u64(vreinterpret_u64_u8(valid_bits), 0) != UINT64_MAX) {
+  uint8x16_t valid = vceqq_u8(vqtbl2q_u8(string_0_32, shuffle.val[2]), shuffle.val[3]);
+  valid = vandq_u8(valid, vandq_u8(high, low));
+  if (vminvq_u8(valid) == 0) {
     const uuidv7_decode_result result = {{{0, 0}}, false};
     return result;
   }
 
-  uint8x16_t high_values = vaddq_u8(high, high_offsets);
-  uint8x16_t low_values = vaddq_u8(low, low_offsets);
-  uint64x2_t words = vreinterpretq_u64_u8(vsliq_n_u8(low_values, high_values, 4));
+  uint64x2_t words = vreinterpretq_u64_u8(vsliq_n_u8(low, high, 4));
   uuidv7_decode_result result = {{{vgetq_lane_u64(words, 0), vgetq_lane_u64(words, 1)}}, true};
   return result;
 }
 
 #else
-
-// MARK: - x86-64
 
 static inline bool uuidv7_is_simd_supported(void) {
 #if defined(__AVX2__)
@@ -177,7 +169,6 @@ static inline __attribute__((target("avx2"))) void uuidv7_encode(
   );
 
   __m128i bytes = _mm_set_epi64x((long long)uuid.words[1], (long long)uuid.words[0]);
-  // Widen each byte, then move its low nibble into the high byte without a mask.
   __m256i words = _mm256_cvtepu8_epi16(bytes);
   __m256i nibbles = _mm256_srli_epi16(
     _mm256_or_si256(words, _mm256_slli_epi16(words, 12)), 4
@@ -186,7 +177,6 @@ static inline __attribute__((target("avx2"))) void uuidv7_encode(
   __m128i digits_0_16 = _mm256_castsi256_si128(hex);
   __m128i digits_16_32 = _mm256_extracti128_si256(hex, 1);
 
-  // The second output lane starts with byte 7's digits from the first input lane.
   __m256i digits = _mm256_inserti128_si256(
     _mm256_castsi128_si256(digits_0_16),
     _mm_alignr_epi8(digits_16_32, digits_0_16, 14),
