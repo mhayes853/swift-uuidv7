@@ -1,5 +1,4 @@
 // swift-tools-version: 6.1
-// The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
@@ -80,6 +79,7 @@ let package = Package(
     .target(
       name: "UUIDV7",
       dependencies: [
+        "CUUIDV7",
         .product(
           name: "GRDB",
           package: "GRDB.swift",
@@ -113,6 +113,7 @@ let package = Package(
       ],
       swiftSettings: [.define("SWIFT_UUIDV7_PACKAGE_BUILD")] + spanSettings
     ),
+    .target(name: "CUUIDV7"),
     .testTarget(
       name: "UUIDV7Tests",
       dependencies: [
