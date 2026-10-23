@@ -55,7 +55,8 @@
       let uuid = try await database.read { db in
         try #require(
           UUIDV7(
-            uuidString: DummyRow
+            uuidString:
+              DummyRow
               .select { _ in SQLiteUUIDV7.fromUnixEpoch(date.timeIntervalSince1970).toText() }
               .fetchOne(db)!
           )
@@ -72,8 +73,11 @@
       let uuid = try await database.read { db in
         try #require(
           UUIDV7(
-            uuidString: DummyRow
-              .select { _ in SQLiteUUIDV7.fromUnixEpoch(Double(Int(date.timeIntervalSince1970))).toText() }
+            uuidString:
+              DummyRow
+              .select { _ in
+                SQLiteUUIDV7.fromUnixEpoch(Double(Int(date.timeIntervalSince1970))).toText()
+              }
               .fetchOne(db)!
           )
         )
@@ -89,7 +93,9 @@
       let uuid = try await database.read { db in
         try #require(
           UUIDV7(
-            uuidString: DummyRow.select { _ in SQLiteUUIDV7.fromUnixEpoch(date.timeIntervalSince1970).toText() }
+            uuidString:
+              DummyRow.select { _ in SQLiteUUIDV7.fromUnixEpoch(date.timeIntervalSince1970).toText()
+              }
               .fetchOne(db)!
           )
         )
@@ -105,8 +111,11 @@
       let uuid = try await database.read { db in
         try #require(
           UUIDV7(
-            uuidString: DummyRow
-              .select { _ in SQLiteUUIDV7.fromUnixEpoch(Double(Int(date.timeIntervalSince1970))).toText() }
+            uuidString:
+              DummyRow
+              .select { _ in
+                SQLiteUUIDV7.fromUnixEpoch(Double(Int(date.timeIntervalSince1970))).toText()
+              }
               .fetchOne(db)!
           )
         )
@@ -126,9 +135,11 @@
       let uuid = try await database.read { db in
         try #require(
           UUIDV7(
-            uuidString: DummyRow.select { _ in
-              SQLiteUUIDV7.fromDate(date).toText()
-            }.fetchOne(db)!
+            uuidString:
+              DummyRow.select { _ in
+                SQLiteUUIDV7.fromDate(date).toText()
+              }
+              .fetchOne(db)!
           )
         )
       }
@@ -141,10 +152,11 @@
 
       let string = UUIDV7().uuidString
       let text = try await database.read { db in
-        try DummyRow.select { _ in
-          SQLiteUUIDV7.fromText(uuidString: string).map { $0.toText() }
-        }
-        .fetchOne(db)!
+        try DummyRow
+          .select { _ in
+            SQLiteUUIDV7.fromText(uuidString: string).map { $0.toText() }
+          }
+          .fetchOne(db)!
       }
       #expect(text == string.lowercased())
     }
@@ -175,10 +187,11 @@
       @Dependency(\.defaultDatabase) var database
 
       let uuid = try await database.read { db in
-        try DummyRow.select { _ in
-          SQLiteUUIDV7.fromText(uuidString: SQLQueryExpression<String>("NULL"))
-        }
-        .fetchOne(db)!
+        try DummyRow
+          .select { _ in
+            SQLiteUUIDV7.fromText(uuidString: SQLQueryExpression<String>("NULL"))
+          }
+          .fetchOne(db)!
       }
       #expect(uuid == nil)
     }
@@ -188,11 +201,12 @@
       @Dependency(\.defaultDatabase) var database
 
       let isNull = try await database.read { db in
-        try DummyRow.select { _ in
-          SQLiteUUIDV7.toText(SQLQueryExpression<UUIDV7>("\(UUID())"))
-            .is(SQLQueryExpression<String?>("NULL"))
-        }
-        .fetchOne(db)!
+        try DummyRow
+          .select { _ in
+            SQLiteUUIDV7.toText(SQLQueryExpression<UUIDV7>("\(UUID())"))
+              .is(SQLQueryExpression<String?>("NULL"))
+          }
+          .fetchOne(db)!
       }
       #expect(isNull)
     }
@@ -229,6 +243,12 @@
         try DummyRow.select { _ in UUIDV7(uuidDate).toUnixEpoch() }.fetchOne(db)!
       }
       #expect(timestamp == uuidDate.timeIntervalSince1970)
+    }
+
+    @Test("Raw Identifier is Always Lowercase")
+    func rawIdentifierIsAlwaysLowercase() async throws {
+      let uuid = try #require(UUIDV7(uuidString: "01A166AA-DC43-7A63-A830-72454FC5F4E6"))
+      #expect(uuid.rawIdentifier == "01a166aa-dc43-7a63-a830-72454fc5f4e6")
     }
   }
 
