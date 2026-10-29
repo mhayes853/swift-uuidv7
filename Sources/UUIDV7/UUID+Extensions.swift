@@ -126,9 +126,6 @@
       }
     }
 
-    // NB: Foundation clamps timestamps before 1970 to 0 instead of trapping like UUIDV7, so these
-    // backports clamp to match Foundation.
-
     private static func clampedTimeInterval(_ date: Date, _ offset: Duration) -> TimeInterval {
       Swift.max(0, date.timeIntervalSince1970 + offset.uuidV7TimeInterval)
     }

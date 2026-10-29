@@ -91,7 +91,48 @@ struct `UUIDV7 tests` {
     let uuid = UUIDV7(uuidString: string)
     #expect(uuid?.uuidString == string)
     #expect(uuid?.description == string)
+    #expect(uuid?.lowercasedUUIDString == string.lowercased())
     #expect(UUIDV7(uuidString: string.lowercased()) == uuid)
+  }
+
+  @Test(
+    arguments: [
+      "0191D85B-8C41-7445-9473-A0B0C24B58A4",
+      "0191d85b-8c41-7445-9473-a0b0c24b58a4",
+      "0191D85b-8c41-7445-9473-A0b0C24B58a4"
+    ]
+  )
+  func `Parses UUID Strings In Any Case`(string: String) {
+    #expect(UUIDV7(uuidString: string)?.uuidString == "0191D85B-8C41-7445-9473-A0B0C24B58A4")
+  }
+
+  @Test(
+    arguments: [
+      "",
+      "0191D85B8C4174459473A0B0C24B58A4",
+      "0191d85b8c4174459473a0b0c24b58a4",
+      "0191D85B-8C4174459473A0B0C24B58A4",
+      "0191D85B-8C41-74459473A0B0C24B58A4",
+      "0191D85B-8C41-7445-9473A0B0C24B58A4",
+      "0191D85B8C41-7445-9473-A0B0C24B58A4",
+      "0191D85B-8C41-7445-9473-A0B0C24B58A",
+      "0191D85B-8C41-7445-9473-A0B0C24B58A40",
+      "0191D85B8C4174459473A0B0C24B58A",
+      "0191D85B8C4174459473A0B0C24B58A4-",
+      "-0191D85B8C4174459473A0B0C24B58A4",
+      "0191D85-B8C41-7445-9473-A0B0C24B58A4",
+      "0191D85B+8C41-7445-9473-A0B0C24B58A4",
+      "0191D85B--8C41-7445-9473A0B0C24B58A4",
+      "0191D85B-8C41-7445-9473-A0B0C24B58AG",
+      "0191D85B-8C41-7445-9473-A0B0C24B58A:",
+      "0191D85B-8C41-7445-9473-A0B0C24B58A@",
+      "0191D85B-8C41-7445-9473-A0B0C24B58a`",
+      "0191D85B-8C41-7445-9473-A0B0C24B58é",
+      "0191D85B 8C41 7445 9473 A0B0C24B58A4"
+    ]
+  )
+  func `Rejects Malformed UUID Strings`(string: String) {
+    #expect(UUIDV7(uuidString: string) == nil)
   }
 
   @Test(
@@ -180,6 +221,14 @@ struct `UUIDV7 tests` {
   func `Generated UUIDs Are Unique`() {
     let uuids = (0..<10_000).map { _ in UUIDV7() }
     #expect(Set(uuids).count == uuids.count)
+  }
+
+  @Test
+  func `Generated UUIDs Have Unique Random Bits`() {
+    let randBs = (0..<10_000).map { _ in
+      withUnsafeBytes(of: UUIDV7().uuid) { $0.loadUnaligned(fromByteOffset: 8, as: UInt64.self) }
+    }
+    #expect(Set(randBs).count == randBs.count)
   }
 
   @Test
@@ -344,7 +393,6 @@ struct `UUIDV7 tests` {
     }
   #endif
 
-  // NB: Spans are read outside of #expect, because Swift 6.2 can crash when compiling them inside.
   #if compiler(>=6.2.3) && hasFeature(Lifetimes) && hasFeature(AddressableTypes) && hasFeature(BuiltinModule)
     @Test
     func `Bytes Matches UUID Bytes`() {

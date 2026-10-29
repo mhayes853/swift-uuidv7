@@ -29,6 +29,10 @@
   import Builtin
 #endif
 
+#if canImport(CUUIDV7) && (arch(arm64) || (arch(x86_64) && !os(Android))) && !os(Windows)
+  internal import CUUIDV7
+#endif
+
 #if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
   public typealias UUIDBytes = uuid_t
 #else
@@ -138,7 +142,7 @@ extension UUIDV7 {
   /// The 12 random bits that comprise of the `rand_a` field from RFC 9562 are replaced by a 12 bit
   /// counter as outlined by section 6.2 of the RFC.
   public init() {
-    self.init(_systemNow: Self._platformTimeIntervalSince1970())
+    self.init(.clock(SystemClock.reading()), 0)
   }
 
   /// Creates a UUID with the current date offset by the specified duration as the timestamp.
@@ -149,7 +153,7 @@ extension UUIDV7 {
   ///
   /// - Parameter offset: A duration to add to the current date.
   public init(offset: Duration) {
-    self.init(_systemNow: Self._platformTimeIntervalSince1970(), offset: offset)
+    self.init(.clock(SystemClock.reading()), offset.uuidV7Milliseconds)
   }
 
   /// Creates a UUID with the current date as the timestamp, using the specified random number
@@ -167,42 +171,76 @@ extension UUIDV7 {
   ///   - generator: The random number generator to use when creating the random data.
   ///   - offset: A duration to add to the current date.
   public init(using generator: inout some RandomNumberGenerator, offset: Duration = .zero) {
-    var bytes = Self.randomBytes(using: &generator)
-    self.init(Self._platformTimeIntervalSince1970(), offset, &bytes)
+    let bytes = Self.randomBytes(using: &generator)
+    self.init(.clock(SystemClock.reading()), offset.uuidV7Milliseconds, bytes)
   }
 
-  package init(_systemNow timeInterval: TimeInterval, offset: Duration = .zero) {
-    var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
-    self.init(timeInterval, offset, &bytes)
+  package init(_systemNow timeInterval: TimeInterval) {
+    self.init(.timeInterval(timeInterval), 0)
+  }
+
+  package init(_systemNow timeInterval: TimeInterval, offset: Duration) {
+    self.init(.timeInterval(timeInterval), offset.uuidV7Milliseconds)
   }
 
   package init(_clampingOffset offset: Duration) {
-    var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
-    self.init(Self._platformTimeIntervalSince1970(), offset, &bytes, clampsToEpoch: true)
+    self.init(
+      .clock(SystemClock.reading()),
+      offset.uuidV7Milliseconds,
+      clampsToEpoch: true
+    )
   }
 
   package init(
     _clampingOffset offset: Duration,
     using generator: inout some RandomNumberGenerator
   ) {
-    var bytes = Self.randomBytes(using: &generator)
-    self.init(Self._platformTimeIntervalSince1970(), offset, &bytes, clampsToEpoch: true)
+    let bytes = Self.randomBytes(using: &generator)
+    self.init(
+      .clock(SystemClock.reading()),
+      offset.uuidV7Milliseconds,
+      bytes,
+      clampsToEpoch: true
+    )
   }
 
   private init(
-    _ systemTimeInterval: TimeInterval,
-    _ offset: Duration,
-    _ bytes: inout UUIDBytes,
+    _ systemTime: SystemTime,
+    _ offsetMillis: Int64,
     clampsToEpoch: Bool = false
   ) {
-    let (millis, sequence) = MonotonicityState.current.withLock {
-      $0.nextMillisWithSequence(timeIntervalSince1970: systemTimeInterval)
+    let (millis, sequence, bytes) = GenerationState.shared.withLock { state in
+      let (millis, sequence) = state.nextMillisWithSequence(at: systemTime)
+      return (millis, sequence, state.random.nextRandB())
     }
-    let timestampMillis = Int64(millis) + offset.uuidV7Milliseconds
+    self.init(millis, sequence, offsetMillis, bytes, clampsToEpoch: clampsToEpoch)
+  }
+
+  private init(
+    _ systemTime: SystemTime,
+    _ offsetMillis: Int64,
+    _ bytes: UUIDBytes,
+    clampsToEpoch: Bool = false
+  ) {
+    let (millis, sequence) = GenerationState.shared.withLock {
+      $0.nextMillisWithSequence(at: systemTime)
+    }
+    self.init(millis, sequence, offsetMillis, bytes, clampsToEpoch: clampsToEpoch)
+  }
+
+  private init(
+    _ millis: UInt64,
+    _ sequence: UInt16,
+    _ offsetMillis: Int64,
+    _ bytes: UUIDBytes,
+    clampsToEpoch: Bool
+  ) {
+    let timestampMillis = Int64(millis) + offsetMillis
     precondition(
       clampsToEpoch || timestampMillis >= 0,
       _negativeTimeStampMessage(TimeInterval(timestampMillis) / 1000)
     )
+    var bytes = bytes
     withUnsafePointer(to: sequence.bigEndian) { ptr in
       ptr.withMemoryRebound(to: (UInt8, UInt8).self, capacity: 1) {
         bytes.6 = $0.pointee.0
@@ -231,7 +269,7 @@ extension UUIDV7 {
   ///
   /// - Parameter timeInterval: The `TimeInterval` since 00:00:00 UTC on 1 January 1970.
   public init(timeIntervalSince1970 timeInterval: TimeInterval) {
-    var bytes = RandomUUIDBytesGenerator.shared.withLock { $0.next() }
+    var bytes = GenerationState.shared.withLock { $0.random.next() }
     self.init(timeInterval, &bytes)
   }
 
@@ -564,7 +602,9 @@ extension UUIDV7 {
 extension UUIDV7 {
   /// Attempts to create a ``UUIDV7`` from a UUID String.
   ///
-  /// The UUID String must be compliant with RFC 9562 UUID Version 7.
+  /// The UUID String must be compliant with RFC 9562 UUID Version 7, and must have the 36 character
+  /// hyphenated form, such as “019B1FC9-11AE-7850-99CA-C24474C79EA9”. Hex digits may be uppercase
+  /// or lowercase.
   ///
   /// - Parameter uuidString: A UUID String.
   public init?(uuidString: String) {
@@ -700,81 +740,20 @@ extension UUIDV7: Sendable {}
 
 extension UUIDV7 {
   package static func _platformTimeIntervalSince1970() -> TimeInterval {
-    #if (!SWIFT_UUIDV7_PACKAGE_BUILD || SwiftUUIDV7Foundation) && (canImport(FoundationEssentials) || canImport(Foundation))
-      Date().timeIntervalSince1970
-    #elseif os(WASI)
-      var timestamp: __wasi_timestamp_t = 0
-      _ = __wasi_clock_time_get(__WASI_CLOCKID_REALTIME, 1_000_000, &timestamp)
-      return TimeInterval(timestamp) / 1_000_000_000
-    #elseif os(Windows)
+    #if os(Windows)
       var fileTime = FILETIME()
       GetSystemTimePreciseAsFileTime(&fileTime)
       let ticks = (UInt64(fileTime.dwHighDateTime) << 32) | UInt64(fileTime.dwLowDateTime)
       return TimeInterval(ticks) / 10_000_000 - 11_644_473_600
+    #elseif os(WASI)
+      var timestamp: __wasi_timestamp_t = 0
+      _ = __wasi_clock_time_get(0, 1_000_000, &timestamp)
+      return TimeInterval(timestamp) / 1_000_000_000
     #else
-      var tv = timeval()
-      gettimeofday(&tv, nil)
-      return TimeInterval(tv.tv_sec) + TimeInterval(tv.tv_usec) / 1_000_000
+      var time = timespec()
+      clock_gettime(CLOCK_REALTIME, &time)
+      return TimeInterval(time.tv_sec) + TimeInterval(time.tv_nsec) / 1_000_000_000
     #endif
-  }
-
-  private static let nilUUIDBytes: UUIDBytes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-  private static let hyphen = UInt8(0x2D)
-  private static let uppercaseHexDigits = [Character]("0123456789ABCDEF")
-  private static let lowercaseHexDigits = [Character]("0123456789abcdef")
-  private static let expectedHyphenIndices = Set([8, 13, 18, 23])
-
-  private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
-    var nibbles = [UInt8]()
-    nibbles.reserveCapacity(32)
-
-    for (index, character) in uuidString.utf8.enumerated() {
-      if character == Self.hyphen {
-        guard Self.expectedHyphenIndices.contains(index) else { return nil }
-        continue
-      }
-      guard let value = Self.hexValue(character) else { return nil }
-      nibbles.append(value)
-    }
-
-    guard nibbles.count == 32 else { return nil }
-
-    var byteArray = [UInt8](repeating: 0, count: 16)
-    var nibbleIndex = 0
-    for byteIndex in 0..<16 {
-      let high = nibbles[nibbleIndex]
-      let low = nibbles[nibbleIndex + 1]
-      nibbleIndex += 2
-      byteArray[byteIndex] = (high << 4) | low
-    }
-
-    return byteArray.withUnsafeBytes { $0.load(as: UUIDBytes.self) }
-  }
-
-  private static let hyphenPositions = Set([8, 12, 16, 20])
-
-  package static func _uuidString(_ uuid: UUIDBytes, lowercased: Bool) -> String {
-    let hexDigits = lowercased ? Self.lowercaseHexDigits : Self.uppercaseHexDigits
-    return withUnsafeBytes(of: uuid) { rawBytes in
-      var output = ""
-      output.reserveCapacity(36)
-
-      var hexCount = 0
-      for byte in rawBytes {
-        let high = Int(byte >> 4)
-        let low = Int(byte & 0x0F)
-
-        output.append(hexDigits[high])
-        output.append(hexDigits[low])
-
-        hexCount += 2
-
-        if Self.hyphenPositions.contains(hexCount) {
-          output.append("-")
-        }
-      }
-      return output
-    }
   }
 
   package static func randomBytes(using generator: inout some RandomNumberGenerator) -> UUIDBytes {
@@ -783,17 +762,174 @@ extension UUIDV7 {
     return unsafeBitCast((high.bigEndian, low.bigEndian), to: UUIDBytes.self)
   }
 
-  private static let numericRange = UInt8(48)...57
-  private static let uppercaseRange = UInt8(65)...70
-  private static let lowercaseRange = UInt8(97)...102
+  private static let nilUUIDBytes: UUIDBytes = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+}
 
-  private static func hexValue(_ character: UInt8) -> UInt8? {
-    switch character {
-    case numericRange: character &- 48
-    case uppercaseRange: character &- 55
-    case lowercaseRange: character &- 87
-    default: nil
+// MARK: - String Conversions
+
+extension UUIDV7 {
+  private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
+    guard uuidString.utf8.count == 36 else { return nil }
+    if let bytes = uuidString.utf8.withContiguousStorageIfAvailable(Self.uuidBytes(fromUTF8:)) {
+      return bytes
     }
+    var uuidString = uuidString
+    return uuidString.withUTF8(Self.uuidBytes(fromUTF8:))
+  }
+}
+
+#if canImport(CUUIDV7) && (arch(arm64) || (arch(x86_64) && !os(Android))) && !os(Windows)
+  extension UUIDV7 {
+    private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
+      guard uuidv7_is_simd_supported() else { return Self.portableUUIDBytes(fromUTF8: utf8) }
+      let result = uuidv7_decode(utf8.baseAddress!)
+      return result.is_valid ? unsafeBitCast(result.bytes.words, to: UUIDBytes.self) : nil
+    }
+
+    package static func _uuidString(_ uuid: UUIDBytes, lowercased: Bool) -> String {
+      guard uuidv7_is_simd_supported() else {
+        return Self.portableUUIDString(uuid, lowercased: lowercased)
+      }
+      let uuid = uuidv7_bytes(words: unsafeBitCast(uuid, to: (UInt64, UInt64).self))
+      var string: (UInt64, UInt64, UInt64, UInt64, UInt32) = (0, 0, 0, 0, 0)
+      return withUnsafeMutableBytes(of: &string) { string in
+        uuidv7_encode(uuid, string.baseAddress!, lowercased)
+        return String(decoding: UnsafeRawBufferPointer(string), as: UTF8.self)
+      }
+    }
+  }
+#else
+  extension UUIDV7 {
+    private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
+      Self.portableUUIDBytes(fromUTF8: utf8)
+    }
+
+    package static func _uuidString(_ uuid: UUIDBytes, lowercased: Bool) -> String {
+      Self.portableUUIDString(uuid, lowercased: lowercased)
+    }
+  }
+#endif
+
+extension UUIDV7 {
+  private static let hyphen = UInt8(0x2D)
+  private static let highBits = UInt64(0x8080_8080_8080_8080)
+
+  private static func portableUUIDBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
+    guard
+      let string = utf8.baseAddress.map(UnsafeRawPointer.init),
+      utf8[8] == Self.hyphen, utf8[13] == Self.hyphen, utf8[18] == Self.hyphen,
+      utf8[23] == Self.hyphen
+    else { return nil }
+    return Self.uuidBytes(
+      fromHexDigits: (
+        Self.characters(string, at: 0),
+        Self.characters(string, at: 9, and: 14),
+        Self.characters(string, at: 19, and: 24),
+        Self.characters(string, at: 28)
+      )
+    )
+  }
+
+  private static func characters(_ string: UnsafeRawPointer, at offset: Int) -> UInt64 {
+    UInt64(littleEndian: string.loadUnaligned(fromByteOffset: offset, as: UInt64.self))
+  }
+
+  private static func characters(
+    _ string: UnsafeRawPointer,
+    at first: Int,
+    and second: Int
+  ) -> UInt64 {
+    let low = UInt32(littleEndian: string.loadUnaligned(fromByteOffset: first, as: UInt32.self))
+    let high = UInt32(littleEndian: string.loadUnaligned(fromByteOffset: second, as: UInt32.self))
+    return UInt64(low) | UInt64(high) << 32
+  }
+
+  private static func uuidBytes(
+    fromHexDigits digits: (UInt64, UInt64, UInt64, UInt64)
+  ) -> UUIDBytes? {
+    var validity = Self.highBits
+    let words = (
+      Self.bytes(fromHexDigits: digits.0, validity: &validity),
+      Self.bytes(fromHexDigits: digits.1, validity: &validity),
+      Self.bytes(fromHexDigits: digits.2, validity: &validity),
+      Self.bytes(fromHexDigits: digits.3, validity: &validity)
+    )
+    guard validity == Self.highBits else { return nil }
+    var bytes = Self.nilUUIDBytes
+    withUnsafeMutableBytes(of: &bytes) { bytes in
+      bytes.storeBytes(of: words.0.littleEndian, toByteOffset: 0, as: UInt32.self)
+      bytes.storeBytes(of: words.1.littleEndian, toByteOffset: 4, as: UInt32.self)
+      bytes.storeBytes(of: words.2.littleEndian, toByteOffset: 8, as: UInt32.self)
+      bytes.storeBytes(of: words.3.littleEndian, toByteOffset: 12, as: UInt32.self)
+    }
+    return bytes
+  }
+
+  private static func bytes(fromHexDigits digits: UInt64, validity: inout UInt64) -> UInt32 {
+    let isDigit = (digits &+ 0x5050_5050_5050_5050) & ~(digits &+ 0x4646_4646_4646_4646)
+    let lowercased = digits | 0x2020_2020_2020_2020
+    let isLetter = (lowercased &+ 0x1F1F_1F1F_1F1F_1F1F) & ~(lowercased &+ 0x1919_1919_1919_1919)
+    validity &= (isDigit | isLetter) & ~digits
+
+    let letterOffsets = ((digits >> 6) & 0x0101_0101_0101_0101) &* 9
+    let values = (digits & 0x0F0F_0F0F_0F0F_0F0F) &+ letterOffsets
+    var bytes = ((values << 4) | (values >> 8)) & 0x00FF_00FF_00FF_00FF
+    bytes = (bytes | (bytes >> 8)) & 0x0000_FFFF_0000_FFFF
+    return UInt32(truncatingIfNeeded: bytes | (bytes >> 16))
+  }
+
+  private static func portableUUIDString(_ uuid: UUIDBytes, lowercased: Bool) -> String {
+    let letterOffset: UInt64 = lowercased ? 0x27 : 0x07
+    let digits = withUnsafeBytes(of: uuid) { uuid in
+      (
+        Self.hexDigits(of: uuid, at: 0, letterOffset: letterOffset),
+        Self.hexDigits(of: uuid, at: 4, letterOffset: letterOffset),
+        Self.hexDigits(of: uuid, at: 8, letterOffset: letterOffset),
+        Self.hexDigits(of: uuid, at: 12, letterOffset: letterOffset)
+      )
+    }
+    return String(unsafeUninitializedCapacity: 36) { buffer in
+      let string = UnsafeMutableRawBufferPointer(buffer)
+      string.storeBytes(of: digits.0.littleEndian, toByteOffset: 0, as: UInt64.self)
+      Self.storeHexDigits(digits.1, in: string, at: 8)
+      Self.storeHexDigits(digits.2, in: string, at: 18)
+      string.storeBytes(of: digits.3.littleEndian, toByteOffset: 28, as: UInt64.self)
+      return 36
+    }
+  }
+
+  private static func storeHexDigits(
+    _ digits: UInt64,
+    in string: UnsafeMutableRawBufferPointer,
+    at offset: Int
+  ) {
+    string.storeBytes(of: Self.hyphen, toByteOffset: offset, as: UInt8.self)
+    string.storeBytes(
+      of: UInt32(truncatingIfNeeded: digits).littleEndian,
+      toByteOffset: offset + 1,
+      as: UInt32.self
+    )
+    string.storeBytes(of: Self.hyphen, toByteOffset: offset + 5, as: UInt8.self)
+    string.storeBytes(
+      of: UInt32(truncatingIfNeeded: digits >> 32).littleEndian,
+      toByteOffset: offset + 6,
+      as: UInt32.self
+    )
+  }
+
+  private static func hexDigits(
+    of uuid: UnsafeRawBufferPointer,
+    at offset: Int,
+    letterOffset: UInt64
+  ) -> UInt64 {
+    let word = UInt32(bigEndian: uuid.loadUnaligned(fromByteOffset: offset, as: UInt32.self))
+    var nibbles = UInt64(word)
+    nibbles = (nibbles | (nibbles << 16)) & 0x0000_FFFF_0000_FFFF
+    nibbles = (nibbles | (nibbles << 8)) & 0x00FF_00FF_00FF_00FF
+    nibbles = (nibbles | (nibbles << 4)) & 0x0F0F_0F0F_0F0F_0F0F
+    let isLetter = ((nibbles &+ 0x0606_0606_0606_0606) >> 4) & 0x0101_0101_0101_0101
+    let letterOffsets = isLetter &* letterOffset
+    return (nibbles &+ 0x3030_3030_3030_3030 &+ letterOffsets).byteSwapped
   }
 }
 
@@ -917,24 +1053,94 @@ private enum PlatformLock {
   }
 }
 
-// MARK: - MonotonicityState
+// MARK: - GenerationState
 
-/// See https://www.rfc-editor.org/rfc/rfc9562.html#section-6.2-5.1
-private struct MonotonicityState: Sendable {
-  static let current = _UUIDV7Lock(Self())
+private struct GenerationState {
+  static nonisolated(unsafe) let shared = _UUIDV7Lock(Self())
 
-  private var previousTimestamp = UInt64(0)
-  private var sequence = UInt16(0)
-  private var offset = UInt64(0)
+  var clock = SystemClock()
+  var monotonicity = MonotonicityState()
+  var random = RandomUUIDBytesGenerator()
 
   private init() {}
 }
 
+extension GenerationState {
+  mutating func nextMillisWithSequence(at time: SystemTime) -> (UInt64, UInt16) {
+    let millis = switch time {
+    case .clock(let reading): self.clock.millisSince1970(at: reading)
+    case .timeInterval(let timeInterval): UInt64(timeInterval * 1000)
+    }
+    return self.monotonicity.nextMillisWithSequence(millisSince1970: millis)
+  }
+}
+
+// MARK: - SystemTime
+
+private enum SystemTime {
+  case clock(UInt64)
+  case timeInterval(TimeInterval)
+}
+
+// MARK: - SystemClock
+
+#if canImport(Darwin)
+  private struct SystemClock {
+    private let timebase = Self.timebase()
+    private var lastReading = UInt64(0)
+    private var lastNanosSince1970 = Int64(0)
+
+    static func reading() -> UInt64 {
+      mach_continuous_time()
+    }
+
+    mutating func millisSince1970(at reading: UInt64) -> UInt64 {
+      let elapsedTicks = Int64(bitPattern: reading &- self.lastReading)
+      let elapsedNanos = elapsedTicks * Int64(self.timebase.numer) / Int64(self.timebase.denom)
+      if elapsedNanos > 1_000_000 {
+        self.readWallClock()
+        return UInt64(self.lastNanosSince1970 / 1_000_000)
+      }
+      return UInt64((self.lastNanosSince1970 + elapsedNanos) / 1_000_000)
+    }
+
+    private mutating func readWallClock() {
+      var time = timeval()
+      self.lastReading = Self.reading()
+      gettimeofday(&time, nil)
+      self.lastNanosSince1970 = Int64(time.tv_sec) * 1_000_000_000 + Int64(time.tv_usec) * 1000
+    }
+
+    private static func timebase() -> mach_timebase_info_data_t {
+      var timebase = mach_timebase_info_data_t()
+      mach_timebase_info(&timebase)
+      return timebase
+    }
+  }
+#else
+  private struct SystemClock {
+    static func reading() -> UInt64 {
+      UInt64(UUIDV7._platformTimeIntervalSince1970() * 1000)
+    }
+
+    func millisSince1970(at reading: UInt64) -> UInt64 {
+      reading
+    }
+  }
+#endif
+
+// MARK: - MonotonicityState
+
+/// See https://www.rfc-editor.org/rfc/rfc9562.html#section-6.2-5.1
+private struct MonotonicityState: Sendable {
+  private var previousTimestamp = UInt64(0)
+  private var sequence = UInt16(0)
+  private var offset = UInt64(0)
+}
+
 extension MonotonicityState {
-  mutating func nextMillisWithSequence(
-    timeIntervalSince1970 timeInterval: TimeInterval
-  ) -> (UInt64, UInt16) {
-    var currentMillis = UInt64(timeInterval * 1000) &+ self.offset
+  mutating func nextMillisWithSequence(millisSince1970 millis: UInt64) -> (UInt64, UInt16) {
+    var currentMillis = millis &+ self.offset
     if self.previousTimestamp == currentMillis {
       self.sequence &+= 1
     } else if currentMillis < self.previousTimestamp {
@@ -957,22 +1163,31 @@ extension MonotonicityState {
 // MARK: - RandomUUIDBytesGenerator
 
 private struct RandomUUIDBytesGenerator {
-  static nonisolated(unsafe) let shared = _UUIDV7Lock(Self())
+  private static let cacheSize = 512
+  private static let cacheByteCount = MemoryLayout<UInt64>.size * Self.cacheSize
 
-  private static let cacheSize = 256
-
-  private var cache = UnsafeMutablePointer<UUIDBytes>.allocate(capacity: Self.cacheSize)
+  private var cache = UnsafeMutablePointer<UInt64>.allocate(capacity: Self.cacheSize)
   private var cacheIndex = 0
-
-  private init() {}
+  private var systemGenerator: SystemRandomNumberGenerator?
 }
 
 extension RandomUUIDBytesGenerator {
   mutating func next() -> UUIDBytes {
-    defer { self.cacheIndex = (self.cacheIndex + 1) % Self.cacheSize }
-    if self.cacheIndex == 0 {
+    unsafeBitCast((self.nextWord(), self.nextWord()), to: UUIDBytes.self)
+  }
+
+  mutating func nextRandB() -> UUIDBytes {
+    unsafeBitCast((UInt64(0), self.nextWord()), to: UUIDBytes.self)
+  }
+
+  private mutating func nextWord() -> UInt64 {
+    if self.cacheIndex == 0, self.systemGenerator == nil {
       self.readBytes()
     }
+    if let word = self.systemGenerator?.next() {
+      return word
+    }
+    defer { self.cacheIndex = (self.cacheIndex + 1) % Self.cacheSize }
     return self.cache[self.cacheIndex]
   }
 }
@@ -983,7 +1198,7 @@ extension RandomUUIDBytesGenerator {
       BCryptGenRandom(
         nil,
         self.cache,
-        UInt32(MemoryLayout<UUIDBytes>.size * Self.cacheSize),
+        UInt32(Self.cacheByteCount),
         UInt32(BCRYPT_RNG_USE_ENTROPY_IN_BUFFER | BCRYPT_USE_SYSTEM_PREFERRED_RNG)
       )
     }
@@ -991,14 +1206,57 @@ extension RandomUUIDBytesGenerator {
     private func readBytes() {
       _ = __wasi_random_get(
         self.cache,
-        __wasi_size_t(MemoryLayout<UUIDBytes>.size * Self.cacheSize)
+        __wasi_size_t(Self.cacheByteCount)
       )
     }
-  #else
+  #elseif canImport(Darwin) || os(Android) || os(FreeBSD) || os(OpenBSD)
     private func readBytes() {
-      let fd = open("/dev/urandom", O_RDONLY)
-      read(fd, self.cache, MemoryLayout<UUIDBytes>.size * Self.cacheSize)
-      close(fd)
+      arc4random_buf(self.cache, Self.cacheByteCount)
+    }
+  #else
+    private mutating func readBytes() {
+      #if os(Linux) && canImport(Glibc)
+        if let getrandom = Self.getrandom, self.fillBytes(using: { getrandom($0, $1, 0) }) {
+          return
+        }
+      #endif
+      let fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC)
+      defer {
+        if fd >= 0 {
+          close(fd)
+        }
+      }
+      if fd >= 0, self.fillBytes(using: { read(fd, $0, $1) }) {
+        return
+      }
+      self.systemGenerator = SystemRandomNumberGenerator()
+    }
+
+    private func fillBytes(using read: (UnsafeMutableRawPointer, Int) -> Int) -> Bool {
+      let buffer = UnsafeMutableRawPointer(self.cache)
+      var offset = 0
+      while offset < Self.cacheByteCount {
+        let count = read(buffer + offset, Self.cacheByteCount - offset)
+        if count > 0 {
+          offset += count
+        } else if count == 0 || errno != EINTR {
+          return false
+        }
+      }
+      return true
     }
   #endif
 }
+
+#if os(Linux) && canImport(Glibc)
+  extension RandomUUIDBytesGenerator {
+    private typealias GetRandom = @convention(c) (UnsafeMutableRawPointer?, Int, UInt32) -> Int
+
+    // NB: C function pointers are Sendable, so this immutable lookup can be shared safely.
+    private static let getrandom: GetRandom? = {
+      // NB: Glibc doesn't import sys/random.h, so getrandom is looked up at runtime. A nil handle
+      // is RTLD_DEFAULT, and the lookup fails on glibc versions older than 2.25.
+      return dlsym(nil, "getrandom").map { unsafeBitCast($0, to: GetRandom.self) }
+    }()
+  }
+#endif

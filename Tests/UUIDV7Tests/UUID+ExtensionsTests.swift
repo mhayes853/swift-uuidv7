@@ -74,7 +74,6 @@
       #expect(uuid.version == 7)
       #expect(UUIDVariant(uuid: uuid.uuid) == .rfc9562)
       let date = try #require(uuid.date)
-      // NB: Other tests can move the shared monotonic state forward, so only check the lower bound.
       #expect(date.timeIntervalSince(now) > -1)
     }
 
