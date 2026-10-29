@@ -4,7 +4,7 @@
   // MARK: - IdentifierStringConvertible
 
   extension UUIDV7: IdentifierStringConvertible {
-    public var rawIdentifier: String { self.uuidString }
+    public var rawIdentifier: String { self.uuidString.lowercased() }
 
     public init?(rawIdentifier: String) {
       self.init(uuidString: rawIdentifier)
