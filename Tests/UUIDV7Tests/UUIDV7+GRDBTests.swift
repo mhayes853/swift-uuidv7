@@ -23,6 +23,19 @@
       #expect(uuid2 > uuid1)
     }
 
+    @Test(arguments: ["uuidv7_from_date", "uuidv7_from_unixepoch"])
+    func `Generates A Distinct UUID For Each Row`(function: String) async throws {
+      let uuids = try await self.database.read { db in
+        try UUIDV7.fetchAll(
+          db,
+          sql: "SELECT \(function)(1000) FROM (VALUES (1), (2), (3))"
+        )
+      }
+      #expect(uuids.count == 3)
+      #expect(Set(uuids).count == 3)
+      #expect(uuids.allSatisfy { $0.timeIntervalSince1970 == 1000 })
+    }
+
     @Test("Creates UUIDV7 From Date")
     func createsUUIDV7FromDate() async throws {
       let date = Date(staticISO8601: "2024-09-09T22:41:15+0000")
