@@ -8,6 +8,19 @@ import Testing
 
 @Suite
 struct `UUIDV7 String Conversions tests` {
+  @Test(arguments: [
+    "0191D85B8C4174459473A0B0C24B58AG",
+    "0191D85B8C4174459473A0B0C24B58A",
+    "0191D85B8C4174459473A0B0C24B58A40",
+    "0191D85B8C41-74459473A0B0C24B58A4",
+    "0191D85B--8C4174459473A0B0C24B58A4",
+    "0191D85B8C4144459473A0B0C24B58A4",
+    "0191D85B8C417445C473A0B0C24B58A4"
+  ])
+  func `Rejects Invalid Legacy Strings`(string: String) {
+    #expect(UUIDV7(uuidString: string) == nil)
+  }
+
   @Test(arguments: 0..<16)
   func `Preserves Every Byte At Every Position`(position: Int) throws {
     let digits = Array("0123456789ABCDEF")
@@ -31,6 +44,16 @@ struct `UUIDV7 String Conversions tests` {
       #expect(uuid.lowercasedUUIDString == expected.lowercased())
       #expect(UUIDV7(uuidString: expected) == uuid)
       #expect(UUIDV7(uuidString: expected.lowercased()) == uuid)
+      let compact = hex.joined()
+      for mask in 0..<15 {
+        var characters = Array(compact.utf8)
+        for (bit, offset) in [8, 13, 18, 23].enumerated() where mask & (1 << bit) != 0 {
+          characters.insert(0x2D, at: offset)
+        }
+        let string = String(decoding: characters, as: UTF8.self)
+        #expect(UUIDV7(uuidString: string) == uuid)
+        #expect(UUIDV7(uuidString: string.lowercased()) == uuid)
+      }
     }
   }
 

@@ -32,6 +32,8 @@ static inline void uuidv7_encode(uuidv7_bytes uuid, void *string, bool lowercase
 
 static inline uuidv7_decode_result uuidv7_decode(const void *string);
 
+static inline uuidv7_decode_result uuidv7_decode_compact(const void *string);
+
 static const uint8_t uuidv7_uppercase_hex_digits[16] = {
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
 };
@@ -119,6 +121,23 @@ static inline uuidv7_decode_result uuidv7_decode(const void *string) {
     return result;
   }
 
+  uint64x2_t words = vreinterpretq_u64_u8(vsliq_n_u8(low, high, 4));
+  uuidv7_decode_result result = {{{vgetq_lane_u64(words, 0), vgetq_lane_u64(words, 1)}}, true};
+  return result;
+}
+
+static inline uuidv7_decode_result uuidv7_decode_compact(const void *string) {
+  const uint8x16x4_t hex_values = vld1q_u8_x4(uuidv7_neon_hex_values);
+  const uint8x16_t zero = vdupq_n_u8('0');
+  const uint8_t *characters = string;
+  uint8x16_t first = vld1q_u8(characters);
+  uint8x16_t second = vld1q_u8(characters + 16);
+  uint8x16_t high = vqtbl4q_u8(hex_values, vsubq_u8(vuzp1q_u8(first, second), zero));
+  uint8x16_t low = vqtbl4q_u8(hex_values, vsubq_u8(vuzp2q_u8(first, second), zero));
+  if (vminvq_u8(vandq_u8(high, low)) == 0) {
+    const uuidv7_decode_result result = {{{0, 0}}, false};
+    return result;
+  }
   uint64x2_t words = vreinterpretq_u64_u8(vsliq_n_u8(low, high, 4));
   uuidv7_decode_result result = {{{vgetq_lane_u64(words, 0), vgetq_lane_u64(words, 1)}}, true};
   return result;
@@ -230,6 +249,29 @@ static inline __attribute__((target("avx2"))) uuidv7_decode_result uuidv7_decode
     _mm256_castsi256_si128(pairs), _mm256_extracti128_si256(pairs, 1)
   );
   __m128i bytes = _mm_shuffle_epi8(packed, _mm_loadu_si128((const __m128i *)byte_shuffle));
+  uuidv7_decode_result result = {{{0, 0}}, true};
+  _mm_storeu_si128((__m128i *)result.bytes.words, bytes);
+  return result;
+}
+
+static inline __attribute__((target("avx2"))) uuidv7_decode_result uuidv7_decode_compact(
+  const void *string
+) {
+  const __m256i digits = uuidv7_avx2_load(string);
+  const __m256i high_nibble_classes = uuidv7_avx2_broadcast(uuidv7_high_nibble_classes);
+  const __m256i low_nibble_classes = uuidv7_avx2_broadcast(uuidv7_low_nibble_classes);
+  __m256i high_nibbles = _mm256_and_si256(_mm256_srli_epi16(digits, 4), _mm256_set1_epi8(0x0F));
+  __m256i offsets = _mm256_shuffle_epi8(high_nibble_classes, high_nibbles);
+  __m256i classes = _mm256_and_si256(offsets, _mm256_shuffle_epi8(low_nibble_classes, digits));
+  if (_mm256_movemask_epi8(_mm256_cmpeq_epi8(classes, _mm256_setzero_si256())) != 0) {
+    const uuidv7_decode_result result = {{{0, 0}}, false};
+    return result;
+  }
+  __m256i values = _mm256_add_epi8(digits, offsets);
+  __m256i pairs = _mm256_maddubs_epi16(values, _mm256_set1_epi16(0x0110));
+  __m128i bytes = _mm_packus_epi16(
+    _mm256_castsi256_si128(pairs), _mm256_extracti128_si256(pairs, 1)
+  );
   uuidv7_decode_result result = {{{0, 0}}, true};
   _mm_storeu_si128((__m128i *)result.bytes.words, bytes);
   return result;

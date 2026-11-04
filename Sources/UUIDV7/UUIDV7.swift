@@ -307,10 +307,11 @@ extension UUIDV7 {
     self.init(timeInterval + offset.uuidV7TimeInterval, &bytes)
   }
 
-  /// Creates a UUID with the specified unix expoch and an integer that acts as the random data.
+  /// Creates a UUID with the specified unix epoch and an integer that acts as the random data.
   ///
-  /// This initializer is convenient for creating deterministic UUIDs. 2 UUIDs with the same
-  /// unix epoch and integer creating using this initializer will be equal.
+  /// This initializer is convenient for creating deterministic UUIDs. Two UUIDs created with the
+  /// same unix epoch and integer will be equal. Different integers produce distinct UUIDs for
+  /// the same timestamp.
   ///
   /// This initializer does not implement sub-millisecond monotonicity, use ``init()`` instead if
   /// sub-millisecond monotonicity is needed.
@@ -320,12 +321,8 @@ extension UUIDV7 {
   ///   - integer: An integer to use in the random data part of this UUID.
   public init(timeIntervalSince1970 timeInterval: TimeInterval, _ integer: UInt32) {
     var bytes = Self.nilUUIDBytes
-    let byteCount = Int(ceil(Double(integer.bitWidth - integer.leadingZeroBitCount) / 8.0))
-    withUnsafeMutablePointer(to: &bytes) { ptr in
-      withUnsafePointer(to: integer) { integerPtr in
-        UnsafeMutableRawPointer(ptr).advanced(by: MemoryLayout<UUIDBytes>.size - byteCount)
-          .copyMemory(from: integerPtr, byteCount: byteCount)
-      }
+    withUnsafeMutableBytes(of: &bytes) { bytes in
+      bytes.storeBytes(of: integer.bigEndian, toByteOffset: 12, as: UInt32.self)
     }
     self.init(timeInterval, &bytes)
   }
@@ -602,9 +599,10 @@ extension UUIDV7 {
 extension UUIDV7 {
   /// Attempts to create a ``UUIDV7`` from a UUID String.
   ///
-  /// The UUID String must be compliant with RFC 9562 UUID Version 7, and must have the 36 character
-  /// hyphenated form, such as “019B1FC9-11AE-7850-99CA-C24474C79EA9”. Hex digits may be uppercase
-  /// or lowercase.
+  /// The UUID String must be compliant with RFC 9562 UUID Version 7. The canonical form has 36
+  /// characters, such as “019B1FC9-11AE-7850-99CA-C24474C79EA9”. For compatibility, 32 hexadecimal
+  /// digits with optional hyphens at UTF-8 offsets 8, 13, 18, and 23 are also accepted. Hex digits
+  /// may be uppercase or lowercase.
   ///
   /// - Parameter uuidString: A UUID String.
   public init?(uuidString: String) {
@@ -769,20 +767,66 @@ extension UUIDV7 {
 
 extension UUIDV7 {
   private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
-    guard uuidString.utf8.count == 36 else { return nil }
     if let bytes = uuidString.utf8.withContiguousStorageIfAvailable(Self.uuidBytes(fromUTF8:)) {
       return bytes
     }
     var uuidString = uuidString
     return uuidString.withUTF8(Self.uuidBytes(fromUTF8:))
   }
+
+  @inline(__always)
+  private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
+    switch utf8.count {
+    case 36: Self.canonicalUUIDBytes(fromUTF8: utf8)
+    case 32: Self.compactUUIDBytes(fromUTF8: UnsafeRawBufferPointer(utf8))
+    case 33...35: Self.fallbackUUIDBytes(fromUTF8: utf8)
+    default: nil
+    }
+  }
+
+  private static func fallbackUUIDBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
+    let first = utf8[8] == Self.hyphen ? 1 : 0
+    let second = utf8[13] == Self.hyphen ? 1 : 0
+    let third = utf8[18] == Self.hyphen ? 1 : 0
+    let fourth = utf8[23] == Self.hyphen ? 1 : 0
+    let hyphenCount = first + second + third + fourth
+    guard utf8.count == 32 + hyphenCount else { return nil }
+    let pointer = UnsafeRawPointer(utf8.baseAddress!)
+    let secondStart = 8 + first
+    let secondMask = second == 0 ? UInt64.max : (UInt64(1) << ((13 - secondStart) * 8)) - 1
+    let secondWord =
+      (Self.characters(pointer, at: secondStart) & secondMask)
+      | (Self.characters(pointer, at: secondStart + second) & ~secondMask)
+    let thirdStart = 16 + first + second
+    let thirdMask = third == 0 ? UInt64.max : (UInt64(1) << ((18 - thirdStart) * 8)) - 1
+    let fourthMask = fourth == 0 ? UInt64.max : (UInt64(1) << ((23 - thirdStart - third) * 8)) - 1
+    let thirdWord =
+      ((Self.characters(pointer, at: thirdStart) & thirdMask)
+        | (Self.characters(pointer, at: thirdStart + third) & ~thirdMask)) & fourthMask
+      | (Self.characters(pointer, at: thirdStart + third + fourth) & ~fourthMask)
+    var normalized = (
+      Self.characters(pointer, at: 0).littleEndian,
+      secondWord.littleEndian,
+      thirdWord.littleEndian,
+      Self.characters(pointer, at: 24 + hyphenCount).littleEndian
+    )
+    return withUnsafeBytes(of: &normalized) { Self.compactUUIDBytes(fromUTF8: $0) }
+  }
 }
 
 #if canImport(CUUIDV7) && (arch(arm64) || (arch(x86_64) && !os(Android))) && !os(Windows)
   extension UUIDV7 {
-    private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
+    private static func canonicalUUIDBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>)
+      -> UUIDBytes?
+    {
       guard uuidv7_is_simd_supported() else { return Self.portableUUIDBytes(fromUTF8: utf8) }
       let result = uuidv7_decode(utf8.baseAddress!)
+      return result.is_valid ? unsafeBitCast(result.bytes.words, to: UUIDBytes.self) : nil
+    }
+
+    private static func compactUUIDBytes(fromUTF8 utf8: UnsafeRawBufferPointer) -> UUIDBytes? {
+      guard uuidv7_is_simd_supported() else { return Self.portableCompactUUIDBytes(fromUTF8: utf8) }
+      let result = uuidv7_decode_compact(utf8.baseAddress!)
       return result.is_valid ? unsafeBitCast(result.bytes.words, to: UUIDBytes.self) : nil
     }
 
@@ -800,8 +844,14 @@ extension UUIDV7 {
   }
 #else
   extension UUIDV7 {
-    private static func uuidBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
+    private static func canonicalUUIDBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>)
+      -> UUIDBytes?
+    {
       Self.portableUUIDBytes(fromUTF8: utf8)
+    }
+
+    private static func compactUUIDBytes(fromUTF8 utf8: UnsafeRawBufferPointer) -> UUIDBytes? {
+      Self.portableCompactUUIDBytes(fromUTF8: utf8)
     }
 
     package static func _uuidString(_ uuid: UUIDBytes, lowercased: Bool) -> String {
@@ -813,6 +863,20 @@ extension UUIDV7 {
 extension UUIDV7 {
   private static let hyphen = UInt8(0x2D)
   private static let highBits = UInt64(0x8080_8080_8080_8080)
+
+  private static func portableCompactUUIDBytes(fromUTF8 utf8: UnsafeRawBufferPointer)
+    -> UUIDBytes?
+  {
+    let pointer = utf8.baseAddress!
+    return Self.uuidBytes(
+      fromHexDigits: (
+        Self.characters(pointer, at: 0),
+        Self.characters(pointer, at: 8),
+        Self.characters(pointer, at: 16),
+        Self.characters(pointer, at: 24)
+      )
+    )
+  }
 
   private static func portableUUIDBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
     guard

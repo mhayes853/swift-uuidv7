@@ -435,7 +435,7 @@
 
       var name: String { "uuidv7_from_date" }
       var argumentCount: Int? { 1 }
-      var isDeterministic: Bool { true }
+      var isDeterministic: Bool { false }
 
       func invoke(_ decoder: inout some QueryDecoder) throws -> QueryBinding {
         try decoder.decode(Date.self).map { UUIDV7($0) }.queryBinding
@@ -448,7 +448,7 @@
 
       var name: String { "uuidv7_from_unixepoch" }
       var argumentCount: Int? { 1 }
-      var isDeterministic: Bool { true }
+      var isDeterministic: Bool { false }
 
       func invoke(_ decoder: inout some QueryDecoder) throws -> QueryBinding {
         try decoder.decode(Double.self).map { UUIDV7(timeIntervalSince1970: $0) }.queryBinding
