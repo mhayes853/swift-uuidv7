@@ -87,6 +87,28 @@ let benchmarks = { @Sendable in
     }
   }
 
+  let compactUUIDV7String = uuidV7String.replacingOccurrences(of: "-", with: "")
+  let partiallyHyphenatedUUIDV7String =
+    String(compactUUIDV7String.prefix(8)) + "-" + compactUUIDV7String.dropFirst(8)
+
+  for (format, string) in [
+    ("Compact", compactUUIDV7String),
+    ("Partially Hyphenated", partiallyHyphenatedUUIDV7String),
+    ("Invalid Compact", String(compactUUIDV7String.dropLast()) + "G")
+  ] {
+    Benchmark(
+      "UUIDV7 \(format) String Decoding Throughput",
+      configuration: Benchmark.Configuration(
+        metrics: [.throughput, .wallClock],
+        scalingFactor: .mega
+      )
+    ) { @MainActor benchmark async in
+      for _ in benchmark.scaledIterations {
+        blackHole(UUIDV7(uuidString: identity(string)))
+      }
+    }
+  }
+
   // MARK: - JSON Coding
 
   let uuidV4s = (0..<1_000).map { _ in UUID() }
