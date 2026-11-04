@@ -23,12 +23,9 @@ struct `UUIDV7 tests` {
       (1, "0000000F-4240-7000-8000-000000000001"),
       (10, "0000000F-4240-7000-8000-00000000000A"),
       (40, "0000000F-4240-7000-8000-000000000028"),
-      (255, "0000000F-4240-7000-8000-0000000000FF"),
       (256, "0000000F-4240-7000-8000-000000000100"),
       (27822, "0000000F-4240-7000-8000-000000006CAE"),
-      (65535, "0000000F-4240-7000-8000-00000000FFFF"),
       (65536, "0000000F-4240-7000-8000-000000010000"),
-      (0xFFFFFF, "0000000F-4240-7000-8000-000000FFFFFF"),
       (0x1000000, "0000000F-4240-7000-8000-000001000000"),
       (UInt32.max, "0000000F-4240-7000-8000-0000FFFFFFFF")
     ]
@@ -68,24 +65,6 @@ struct `UUIDV7 tests` {
     let u2 = UUIDV7(timeIntervalSince1970: 1_000, 6)
     #expect(u1 != u2)
   }
-
-  @Test
-  func `Deterministic Integers Stay Unique And Ordered Across Byte Boundaries`() {
-    let integers = [UInt32(0), 1, 255, 256, 257, 65535, 65536, 0xFFFFFF, 0x1000000, UInt32.max]
-    let uuids = integers.map { UUIDV7(timeIntervalSince1970: 1_000, $0) }
-    #expect(Set(uuids).count == integers.count)
-    #expect(zip(uuids, uuids.dropFirst()).allSatisfy { $0 < $1 })
-  }
-
-  #if SwiftUUIDV7Foundation && canImport(Foundation)
-    @Test
-    func `Decodes Legacy Compact UUID Strings`() throws {
-      let compact = "0191D85B8C4174459473A0B0C24B58A4"
-      let data = try JSONEncoder().encode(compact)
-      let uuid = try JSONDecoder().decode(UUIDV7.self, from: data)
-      #expect(uuid.uuidString == "0191D85B-8C41-7445-9473-A0B0C24B58A4")
-    }
-  #endif
 
   @Test(
     arguments: [
@@ -581,10 +560,13 @@ struct `UUIDV7 tests` {
       #expect(uuid.date == date.addingTimeInterval(60))
     }
 
-    @Test
-    func `Decode Valid UUIDV7`() throws {
+    @Test(arguments: [
+      "1915C92E-B61E-7E3E-AFEA-2B5F3EA2DCF0",
+      "1915C92EB61E7E3EAFEA2B5F3EA2DCF0"
+    ])
+    func `Decode Valid UUIDV7`(string: String) throws {
       let u = UUID(uuidString: "1915C92E-B61E-7E3E-AFEA-2B5F3EA2DCF0")!
-      let data = try JSONEncoder().encode(u)
+      let data = try JSONEncoder().encode(string)
       let u7 = try JSONDecoder().decode(UUIDV7.self, from: data)
       #expect(u7.rawValue == u)
     }

@@ -310,9 +310,8 @@ extension UUIDV7 {
   /// Creates a UUID with the specified unix epoch and an integer that acts as the random data.
   ///
   /// This initializer is convenient for creating deterministic UUIDs. Two UUIDs created with the
-  /// same unix epoch and integer will be equal. The integer is encoded
-  /// in big-endian order in the final four bytes, so different integers produce distinct UUIDs
-  /// that sort in integer order when their timestamps are equal.
+  /// same unix epoch and integer will be equal. Different integers produce distinct UUIDs for
+  /// the same timestamp.
   ///
   /// This initializer does not implement sub-millisecond monotonicity, use ``init()`` instead if
   /// sub-millisecond monotonicity is needed.

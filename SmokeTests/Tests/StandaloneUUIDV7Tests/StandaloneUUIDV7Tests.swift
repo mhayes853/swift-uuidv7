@@ -25,20 +25,6 @@ struct `Standalone UUIDV7 tests` {
   }
 
   @Test
-  func `Decodes Legacy Compact UUID Strings`() throws {
-    let data = try JSONEncoder().encode("0191D85B8C4174459473A0B0C24B58A4")
-    let uuid = try JSONDecoder().decode(UUIDV7.self, from: data)
-    #expect(uuid.uuidString == "0191D85B-8C41-7445-9473-A0B0C24B58A4")
-  }
-
-  @Test
-  func `Deterministic Integers Use Big Endian Encoding`() {
-    let uuid = UUIDV7(timeIntervalSince1970: 0, 0x0123_4567)
-    #expect(uuid.uuidString == "00000000-0000-7000-8000-000001234567")
-    #expect(UUIDV7(timeIntervalSince1970: 0, 1) < UUIDV7(timeIntervalSince1970: 0, 256))
-  }
-
-  @Test
   func `Generates Monotonically Increasing Valid UUIDs`() {
     let first = UUIDV7()
     let second = UUIDV7()

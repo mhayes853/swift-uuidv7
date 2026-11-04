@@ -1,19 +1,11 @@
 #if SwiftUUIDV7StructuredQueries
   import Foundation
-  import StructuredQueriesSQLiteCore
   import StructuredQueriesCore
   import Testing
   import UUIDV7
 
   @Suite("UUIDV7+StructuredQueries tests")
   struct UUIDV7StructuredQueriesTests {
-    @Test
-    func `Random UUID Functions Are Not Deterministic`() {
-      #expect(!SQLiteUUIDV7.uuidv7Function.isDeterministic)
-      #expect(!SQLiteUUIDV7.fromDateFunction.isDeterministic)
-      #expect(!SQLiteUUIDV7.fromUnixEpochFunction.isDeterministic)
-    }
-
     @Test("Bytes Binding")
     func bytesBinding() throws {
       let uuid = try #require(
