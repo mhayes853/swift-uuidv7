@@ -23,7 +23,13 @@ struct `UUIDV7 tests` {
       (1, "0000000F-4240-7000-8000-000000000001"),
       (10, "0000000F-4240-7000-8000-00000000000A"),
       (40, "0000000F-4240-7000-8000-000000000028"),
-      (27822, "0000000F-4240-7000-8000-00000000AE6C"),
+      (255, "0000000F-4240-7000-8000-0000000000FF"),
+      (256, "0000000F-4240-7000-8000-000000000100"),
+      (27822, "0000000F-4240-7000-8000-000000006CAE"),
+      (65535, "0000000F-4240-7000-8000-00000000FFFF"),
+      (65536, "0000000F-4240-7000-8000-000000010000"),
+      (0xFFFFFF, "0000000F-4240-7000-8000-000000FFFFFF"),
+      (0x1000000, "0000000F-4240-7000-8000-000001000000"),
       (UInt32.max, "0000000F-4240-7000-8000-0000FFFFFFFF")
     ]
   )
@@ -61,6 +67,14 @@ struct `UUIDV7 tests` {
     let u1 = UUIDV7(timeIntervalSince1970: 1_000, 5)
     let u2 = UUIDV7(timeIntervalSince1970: 1_000, 6)
     #expect(u1 != u2)
+  }
+
+  @Test
+  func `Deterministic Integers Stay Unique And Ordered Across Byte Boundaries`() {
+    let integers = [UInt32(0), 1, 255, 256, 257, 65535, 65536, 0xFFFFFF, 0x1000000, UInt32.max]
+    let uuids = integers.map { UUIDV7(timeIntervalSince1970: 1_000, $0) }
+    #expect(Set(uuids).count == integers.count)
+    #expect(zip(uuids, uuids.dropFirst()).allSatisfy { $0 < $1 })
   }
 
   #if SwiftUUIDV7Foundation && canImport(Foundation)
@@ -539,7 +553,7 @@ struct `UUIDV7 tests` {
         (1, "0191D8EE-F668-7000-8000-000000000001"),
         (10, "0191D8EE-F668-7000-8000-00000000000A"),
         (40, "0191D8EE-F668-7000-8000-000000000028"),
-        (27822, "0191D8EE-F668-7000-8000-00000000AE6C")
+        (27822, "0191D8EE-F668-7000-8000-000000006CAE")
       ]
     )
     func `From Date And Deterministic Integer`(integer: UInt32, uuidString: String) async throws {

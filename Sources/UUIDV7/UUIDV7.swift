@@ -307,10 +307,12 @@ extension UUIDV7 {
     self.init(timeInterval + offset.uuidV7TimeInterval, &bytes)
   }
 
-  /// Creates a UUID with the specified unix expoch and an integer that acts as the random data.
+  /// Creates a UUID with the specified unix epoch and an integer that acts as the random data.
   ///
-  /// This initializer is convenient for creating deterministic UUIDs. 2 UUIDs with the same
-  /// unix epoch and integer creating using this initializer will be equal.
+  /// This initializer is convenient for creating deterministic UUIDs. Two UUIDs created with the
+  /// same unix epoch and integer will be equal. The integer is encoded
+  /// in big-endian order in the final four bytes, so different integers produce distinct UUIDs
+  /// that sort in integer order when their timestamps are equal.
   ///
   /// This initializer does not implement sub-millisecond monotonicity, use ``init()`` instead if
   /// sub-millisecond monotonicity is needed.
@@ -320,12 +322,8 @@ extension UUIDV7 {
   ///   - integer: An integer to use in the random data part of this UUID.
   public init(timeIntervalSince1970 timeInterval: TimeInterval, _ integer: UInt32) {
     var bytes = Self.nilUUIDBytes
-    let byteCount = Int(ceil(Double(integer.bitWidth - integer.leadingZeroBitCount) / 8.0))
-    withUnsafeMutablePointer(to: &bytes) { ptr in
-      withUnsafePointer(to: integer) { integerPtr in
-        UnsafeMutableRawPointer(ptr).advanced(by: MemoryLayout<UUIDBytes>.size - byteCount)
-          .copyMemory(from: integerPtr, byteCount: byteCount)
-      }
+    withUnsafeMutableBytes(of: &bytes) { bytes in
+      bytes.storeBytes(of: integer.bigEndian, toByteOffset: 12, as: UInt32.self)
     }
     self.init(timeInterval, &bytes)
   }

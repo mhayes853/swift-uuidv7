@@ -32,6 +32,13 @@ struct `Standalone UUIDV7 tests` {
   }
 
   @Test
+  func `Deterministic Integers Use Big Endian Encoding`() {
+    let uuid = UUIDV7(timeIntervalSince1970: 0, 0x0123_4567)
+    #expect(uuid.uuidString == "00000000-0000-7000-8000-000001234567")
+    #expect(UUIDV7(timeIntervalSince1970: 0, 1) < UUIDV7(timeIntervalSince1970: 0, 256))
+  }
+
+  @Test
   func `Generates Monotonically Increasing Valid UUIDs`() {
     let first = UUIDV7()
     let second = UUIDV7()
