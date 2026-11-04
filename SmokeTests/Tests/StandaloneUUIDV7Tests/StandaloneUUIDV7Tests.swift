@@ -25,6 +25,13 @@ struct `Standalone UUIDV7 tests` {
   }
 
   @Test
+  func `Decodes Legacy Compact UUID Strings`() throws {
+    let data = try JSONEncoder().encode("0191D85B8C4174459473A0B0C24B58A4")
+    let uuid = try JSONDecoder().decode(UUIDV7.self, from: data)
+    #expect(uuid.uuidString == "0191D85B-8C41-7445-9473-A0B0C24B58A4")
+  }
+
+  @Test
   func `Generates Monotonically Increasing Valid UUIDs`() {
     let first = UUIDV7()
     let second = UUIDV7()

@@ -63,6 +63,16 @@ struct `UUIDV7 tests` {
     #expect(u1 != u2)
   }
 
+  #if SwiftUUIDV7Foundation && canImport(Foundation)
+    @Test
+    func `Decodes Legacy Compact UUID Strings`() throws {
+      let compact = "0191D85B8C4174459473A0B0C24B58A4"
+      let data = try JSONEncoder().encode(compact)
+      let uuid = try JSONDecoder().decode(UUIDV7.self, from: data)
+      #expect(uuid.uuidString == "0191D85B-8C41-7445-9473-A0B0C24B58A4")
+    }
+  #endif
+
   @Test(
     arguments: [
       "invalid",
@@ -109,11 +119,6 @@ struct `UUIDV7 tests` {
   @Test(
     arguments: [
       "",
-      "0191D85B8C4174459473A0B0C24B58A4",
-      "0191d85b8c4174459473a0b0c24b58a4",
-      "0191D85B-8C4174459473A0B0C24B58A4",
-      "0191D85B-8C41-74459473A0B0C24B58A4",
-      "0191D85B-8C41-7445-9473A0B0C24B58A4",
       "0191D85B8C41-7445-9473-A0B0C24B58A4",
       "0191D85B-8C41-7445-9473-A0B0C24B58A",
       "0191D85B-8C41-7445-9473-A0B0C24B58A40",

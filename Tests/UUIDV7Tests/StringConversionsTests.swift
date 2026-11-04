@@ -9,6 +9,31 @@ import Testing
 @Suite
 struct `UUIDV7 String Conversions tests` {
   @Test(arguments: 0..<16)
+  func `Parses Legacy Optional Hyphens`(mask: Int) {
+    var characters = Array("0191D85B8C4174459473A0B0C24B58A4".utf8)
+    for (bit, offset) in [8, 13, 18, 23].enumerated() where mask & (1 << bit) != 0 {
+      characters.insert(0x2D, at: offset)
+    }
+    let string = String(decoding: characters, as: UTF8.self)
+    let expected = "0191D85B-8C41-7445-9473-A0B0C24B58A4"
+    #expect(UUIDV7(uuidString: string)?.uuidString == expected)
+    #expect(UUIDV7(uuidString: string.lowercased())?.uuidString == expected)
+  }
+
+  @Test(arguments: [
+    "0191D85B8C4174459473A0B0C24B58AG",
+    "0191D85B8C4174459473A0B0C24B58A",
+    "0191D85B8C4174459473A0B0C24B58A40",
+    "0191D85B8C41-74459473A0B0C24B58A4",
+    "0191D85B--8C4174459473A0B0C24B58A4",
+    "0191D85B8C4144459473A0B0C24B58A4",
+    "0191D85B8C417445C473A0B0C24B58A4"
+  ])
+  func `Rejects Invalid Legacy Strings`(string: String) {
+    #expect(UUIDV7(uuidString: string) == nil)
+  }
+
+  @Test(arguments: 0..<16)
   func `Preserves Every Byte At Every Position`(position: Int) throws {
     let digits = Array("0123456789ABCDEF")
     for value in UInt8.min...UInt8.max {

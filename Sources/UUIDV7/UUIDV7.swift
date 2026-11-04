@@ -602,9 +602,10 @@ extension UUIDV7 {
 extension UUIDV7 {
   /// Attempts to create a ``UUIDV7`` from a UUID String.
   ///
-  /// The UUID String must be compliant with RFC 9562 UUID Version 7, and must have the 36 character
-  /// hyphenated form, such as “019B1FC9-11AE-7850-99CA-C24474C79EA9”. Hex digits may be uppercase
-  /// or lowercase.
+  /// The UUID String must be compliant with RFC 9562 UUID Version 7. The canonical form has 36
+  /// characters, such as “019B1FC9-11AE-7850-99CA-C24474C79EA9”. For compatibility, 32 hexadecimal
+  /// digits with optional hyphens at UTF-8 offsets 8, 13, 18, and 23 are also accepted. Hex digits
+  /// may be uppercase or lowercase.
   ///
   /// - Parameter uuidString: A UUID String.
   public init?(uuidString: String) {
@@ -769,6 +770,30 @@ extension UUIDV7 {
 
 extension UUIDV7 {
   private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
+    Self.canonicalUUIDBytes(from: uuidString) ?? Self.legacyUUIDBytes(from: uuidString)
+  }
+
+  private static func legacyUUIDBytes(from uuidString: String) -> UUIDBytes? {
+    guard (32...36).contains(uuidString.utf8.count) else { return nil }
+    let digits = uuidString.utf8.enumerated()
+      .compactMap { index, byte in
+        byte == Self.hyphen && [8, 13, 18, 23].contains(index) ? nil : byte
+      }
+    guard digits.count == 32 else { return nil }
+    return digits.withUnsafeBytes { digits in
+      let pointer = digits.baseAddress!
+      return Self.uuidBytes(
+        fromHexDigits: (
+          Self.characters(pointer, at: 0),
+          Self.characters(pointer, at: 8),
+          Self.characters(pointer, at: 16),
+          Self.characters(pointer, at: 24)
+        )
+      )
+    }
+  }
+
+  private static func canonicalUUIDBytes(from uuidString: String) -> UUIDBytes? {
     guard uuidString.utf8.count == 36 else { return nil }
     if let bytes = uuidString.utf8.withContiguousStorageIfAvailable(Self.uuidBytes(fromUTF8:)) {
       return bytes
