@@ -768,10 +768,10 @@ extension UUIDV7 {
 
 extension UUIDV7 {
   private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
-    Self.canonicalUUIDBytes(from: uuidString) ?? Self.legacyUUIDBytes(from: uuidString)
+    Self.canonicalUUIDBytes(from: uuidString) ?? Self.fallbackUUIDBytes(from: uuidString)
   }
 
-  private static func legacyUUIDBytes(from uuidString: String) -> UUIDBytes? {
+  private static func fallbackUUIDBytes(from uuidString: String) -> UUIDBytes? {
     guard (32...36).contains(uuidString.utf8.count) else { return nil }
     let digits = uuidString.utf8.enumerated()
       .compactMap { index, byte in

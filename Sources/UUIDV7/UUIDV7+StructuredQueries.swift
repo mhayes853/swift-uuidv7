@@ -435,7 +435,6 @@
 
       var name: String { "uuidv7_from_date" }
       var argumentCount: Int? { 1 }
-      // The timestamp is fixed, but each invocation generates fresh random bits.
       var isDeterministic: Bool { false }
 
       func invoke(_ decoder: inout some QueryDecoder) throws -> QueryBinding {
@@ -449,7 +448,6 @@
 
       var name: String { "uuidv7_from_unixepoch" }
       var argumentCount: Int? { 1 }
-      // The timestamp is fixed, but each invocation generates fresh random bits.
       var isDeterministic: Bool { false }
 
       func invoke(_ decoder: inout some QueryDecoder) throws -> QueryBinding {
