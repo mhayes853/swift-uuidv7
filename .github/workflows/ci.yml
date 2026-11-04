@@ -43,7 +43,7 @@ jobs:
 
   linux:
     name: Linux
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         config: ["debug", "release"]
@@ -65,7 +65,7 @@ jobs:
 
   foundation-free:
     name: Without Foundation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Test Without Foundation
