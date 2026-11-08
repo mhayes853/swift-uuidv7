@@ -605,7 +605,7 @@ extension UUIDV7 {
   /// may be uppercase or lowercase.
   ///
   /// - Parameter uuidString: A UUID String.
-  public init?(uuidString: String) {
+  public init?(uuidString: borrowing String) {
     guard let bytes = Self.uuidBytes(from: uuidString) else { return nil }
     self.init(uuid: bytes)
   }
@@ -766,12 +766,17 @@ extension UUIDV7 {
 // MARK: - String Conversions
 
 extension UUIDV7 {
-  private static func uuidBytes(from uuidString: String) -> UUIDBytes? {
+  @inline(__always)
+  private static func uuidBytes(from uuidString: borrowing String) -> UUIDBytes? {
     if let bytes = uuidString.utf8.withContiguousStorageIfAvailable(Self.uuidBytes(fromUTF8:)) {
       return bytes
     }
-    var uuidString = uuidString
-    return uuidString.withUTF8(Self.uuidBytes(fromUTF8:))
+    return Self.nonContiguousUUIDBytes(from: copy uuidString)
+  }
+
+  @inline(never)
+  private static func nonContiguousUUIDBytes(from uuidString: consuming String) -> UUIDBytes? {
+    uuidString.withUTF8(Self.uuidBytes(fromUTF8:))
   }
 
   @inline(__always)
