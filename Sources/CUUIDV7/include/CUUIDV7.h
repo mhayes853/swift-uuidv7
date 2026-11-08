@@ -34,6 +34,10 @@ static inline uuidv7_decode_result uuidv7_decode(const void *string);
 
 static inline uuidv7_decode_result uuidv7_decode_compact(const void *string);
 
+#if defined(__aarch64__)
+static inline uuidv7_decode_result uuidv7_decode_fallback(const void *string, size_t count);
+#endif
+
 static const uint8_t uuidv7_uppercase_hex_digits[16] = {
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
 };
@@ -134,6 +138,100 @@ static inline uuidv7_decode_result uuidv7_decode_compact(const void *string) {
   uint8x16_t second = vld1q_u8(characters + 16);
   uint8x16_t high = vqtbl4q_u8(hex_values, vsubq_u8(vuzp1q_u8(first, second), zero));
   uint8x16_t low = vqtbl4q_u8(hex_values, vsubq_u8(vuzp2q_u8(first, second), zero));
+  if (vminvq_u8(vandq_u8(high, low)) == 0) {
+    const uuidv7_decode_result result = {{{0, 0}}, false};
+    return result;
+  }
+  uint64x2_t words = vreinterpretq_u64_u8(vsliq_n_u8(low, high, 4));
+  uuidv7_decode_result result = {{{vgetq_lane_u64(words, 0), vgetq_lane_u64(words, 1)}}, true};
+  return result;
+}
+
+static const uint8_t uuidv7_neon_fallback_shuffles[16][32] = {
+  {0},
+  {
+    0, 2, 4, 6, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31,
+    1, 3, 5, 7, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 15, 17, 19, 21, 23, 25, 27, 29, 31,
+    1, 3, 5, 7, 9, 11, 14, 16, 18, 20, 22, 24, 26, 28, 30, 47
+  },
+  {
+    0, 2, 4, 6, 9, 11, 14, 16, 18, 20, 22, 24, 26, 28, 30, 46,
+    1, 3, 5, 7, 10, 12, 15, 17, 19, 21, 23, 25, 27, 29, 31, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 14, 16, 19, 21, 23, 25, 27, 29, 31,
+    1, 3, 5, 7, 9, 11, 13, 15, 17, 20, 22, 24, 26, 28, 30, 47
+  },
+  {
+    0, 2, 4, 6, 9, 11, 13, 15, 17, 20, 22, 24, 26, 28, 30, 46,
+    1, 3, 5, 7, 10, 12, 14, 16, 19, 21, 23, 25, 27, 29, 31, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 15, 17, 20, 22, 24, 26, 28, 30, 46,
+    1, 3, 5, 7, 9, 11, 14, 16, 19, 21, 23, 25, 27, 29, 31, 47
+  },
+  {
+    0, 2, 4, 6, 9, 11, 14, 16, 19, 21, 23, 25, 27, 29, 31, 46,
+    1, 3, 5, 7, 10, 12, 15, 17, 20, 22, 24, 26, 28, 30, 45, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 25, 27, 29, 31,
+    1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 24, 26, 28, 30, 47
+  },
+  {
+    0, 2, 4, 6, 9, 11, 13, 15, 17, 19, 21, 24, 26, 28, 30, 46,
+    1, 3, 5, 7, 10, 12, 14, 16, 18, 20, 22, 25, 27, 29, 31, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 15, 17, 19, 21, 24, 26, 28, 30, 46,
+    1, 3, 5, 7, 9, 11, 14, 16, 18, 20, 22, 25, 27, 29, 31, 47
+  },
+  {
+    0, 2, 4, 6, 9, 11, 14, 16, 18, 20, 22, 25, 27, 29, 31, 46,
+    1, 3, 5, 7, 10, 12, 15, 17, 19, 21, 24, 26, 28, 30, 45, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 14, 16, 19, 21, 24, 26, 28, 30, 46,
+    1, 3, 5, 7, 9, 11, 13, 15, 17, 20, 22, 25, 27, 29, 31, 47
+  },
+  {
+    0, 2, 4, 6, 9, 11, 13, 15, 17, 20, 22, 25, 27, 29, 31, 46,
+    1, 3, 5, 7, 10, 12, 14, 16, 19, 21, 24, 26, 28, 30, 45, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 15, 17, 20, 22, 25, 27, 29, 31, 46,
+    1, 3, 5, 7, 9, 11, 14, 16, 19, 21, 24, 26, 28, 30, 45, 47
+  },
+  {0}
+};
+
+static inline uuidv7_decode_result uuidv7_decode_fallback(const void *string, size_t count) {
+  const uint8_t *characters = string;
+  const unsigned first = characters[8] == '-';
+  const unsigned second = characters[13] == '-';
+  const unsigned third = characters[18] == '-';
+  const unsigned fourth = characters[23] == '-';
+  if (count != 32 + first + second + third + fourth) {
+    const uuidv7_decode_result result = {{{0, 0}}, false};
+    return result;
+  }
+
+  const unsigned hyphens = first | second << 1 | third << 2 | fourth << 3;
+  const uint8x16x2_t shuffle = vld1q_u8_x2(uuidv7_neon_fallback_shuffles[hyphens]);
+  const uint8x16x4_t hex_values = vld1q_u8_x4(uuidv7_neon_hex_values);
+  const uint8x16_t zero = vdupq_n_u8('0');
+  uint8x16x3_t string_0_count = {{
+    vld1q_u8(characters),
+    vld1q_u8(characters + 16),
+    vld1q_u8(characters + count - 16)
+  }};
+  uint8x16_t high = vqtbl3q_u8(string_0_count, shuffle.val[0]);
+  uint8x16_t low = vqtbl3q_u8(string_0_count, shuffle.val[1]);
+  high = vqtbl4q_u8(hex_values, vsubq_u8(high, zero));
+  low = vqtbl4q_u8(hex_values, vsubq_u8(low, zero));
   if (vminvq_u8(vandq_u8(high, low)) == 0) {
     const uuidv7_decode_result result = {{{0, 0}}, false};
     return result;

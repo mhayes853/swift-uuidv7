@@ -784,7 +784,9 @@ extension UUIDV7 {
     }
   }
 
-  private static func fallbackUUIDBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
+  private static func portableFallbackUUIDBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>)
+    -> UUIDBytes?
+  {
     let first = utf8[8] == Self.hyphen ? 1 : 0
     let second = utf8[13] == Self.hyphen ? 1 : 0
     let third = utf8[18] == Self.hyphen ? 1 : 0
@@ -830,6 +832,15 @@ extension UUIDV7 {
       return result.is_valid ? unsafeBitCast(result.bytes.words, to: UUIDBytes.self) : nil
     }
 
+    private static func fallbackUUIDBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
+      #if arch(arm64)
+        let result = uuidv7_decode_fallback(utf8.baseAddress!, utf8.count)
+        return result.is_valid ? unsafeBitCast(result.bytes.words, to: UUIDBytes.self) : nil
+      #else
+        Self.portableFallbackUUIDBytes(fromUTF8: utf8)
+      #endif
+    }
+
     package static func _uuidString(_ uuid: UUIDBytes, lowercased: Bool) -> String {
       guard uuidv7_is_simd_supported() else {
         return Self.portableUUIDString(uuid, lowercased: lowercased)
@@ -852,6 +863,10 @@ extension UUIDV7 {
 
     private static func compactUUIDBytes(fromUTF8 utf8: UnsafeRawBufferPointer) -> UUIDBytes? {
       Self.portableCompactUUIDBytes(fromUTF8: utf8)
+    }
+
+    private static func fallbackUUIDBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
+      Self.portableFallbackUUIDBytes(fromUTF8: utf8)
     }
 
     package static func _uuidString(_ uuid: UUIDBytes, lowercased: Bool) -> String {
