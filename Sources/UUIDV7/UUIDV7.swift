@@ -838,12 +838,11 @@ extension UUIDV7 {
     }
 
     private static func fallbackUUIDBytes(fromUTF8 utf8: UnsafeBufferPointer<UInt8>) -> UUIDBytes? {
-      #if arch(arm64)
-        let result = uuidv7_decode_fallback(utf8.baseAddress!, utf8.count)
-        return result.is_valid ? unsafeBitCast(result.bytes.words, to: UUIDBytes.self) : nil
-      #else
-        Self.portableFallbackUUIDBytes(fromUTF8: utf8)
-      #endif
+      guard uuidv7_is_simd_supported() else {
+        return Self.portableFallbackUUIDBytes(fromUTF8: utf8)
+      }
+      let result = uuidv7_decode_fallback(utf8.baseAddress!, utf8.count)
+      return result.is_valid ? unsafeBitCast(result.bytes.words, to: UUIDBytes.self) : nil
     }
 
     package static func _uuidString(_ uuid: UUIDBytes, lowercased: Bool) -> String {
