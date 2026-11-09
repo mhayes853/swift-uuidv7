@@ -26,11 +26,20 @@ typedef struct {
   bool is_valid;
 } uuidv7_decode_result;
 
+static inline uuidv7_decode_result uuidv7_decode_invalid(void) {
+  const uuidv7_decode_result result = {{{0, 0}}, false};
+  return result;
+}
+
 static inline bool uuidv7_is_simd_supported(void);
 
 static inline void uuidv7_encode(uuidv7_bytes uuid, void *string, bool lowercased);
 
 static inline uuidv7_decode_result uuidv7_decode(const void *string);
+
+static inline uuidv7_decode_result uuidv7_decode_compact(const void *string);
+
+static inline uuidv7_decode_result uuidv7_decode_fallback(const void *string, size_t count);
 
 static const uint8_t uuidv7_uppercase_hex_digits[16] = {
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
@@ -45,6 +54,20 @@ static const uint8_t uuidv7_high_nibble_classes[16] = {0, 0, 0, 0xD0, 0xC9, 0, 0
 static const uint8_t uuidv7_low_nibble_classes[16] = {
   0x10, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x10, 0x10, 0x10
 };
+
+static inline __attribute__((always_inline)) int uuidv7_fallback_hyphens(
+  const uint8_t *characters,
+  size_t count
+) {
+  const unsigned first = characters[8] == '-';
+  const unsigned second = characters[13] == '-';
+  const unsigned third = characters[18] == '-';
+  const unsigned fourth = characters[23] == '-';
+  if (count != 32 + first + second + third + fourth) {
+    return -1;
+  }
+  return (int)(first | second << 1 | third << 2 | fourth << 3);
+}
 
 #if defined(__aarch64__)
 
@@ -86,6 +109,23 @@ static const uint8_t uuidv7_neon_hex_values[64] = {
   0, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
+static inline __attribute__((always_inline)) uuidv7_decode_result uuidv7_neon_decode_digits(
+  uint8x16_t high_digits,
+  uint8x16_t low_digits,
+  uint8x16_t valid
+) {
+  const uint8x16x4_t hex_values = vld1q_u8_x4(uuidv7_neon_hex_values);
+  const uint8x16_t zero = vdupq_n_u8('0');
+  uint8x16_t high = vqtbl4q_u8(hex_values, vsubq_u8(high_digits, zero));
+  uint8x16_t low = vqtbl4q_u8(hex_values, vsubq_u8(low_digits, zero));
+  if (vminvq_u8(vandq_u8(valid, vandq_u8(high, low))) == 0) {
+    return uuidv7_decode_invalid();
+  }
+  uint64x2_t words = vreinterpretq_u64_u8(vsliq_n_u8(low, high, 4));
+  uuidv7_decode_result result = {{{vgetq_lane_u64(words, 0), vgetq_lane_u64(words, 1)}}, true};
+  return result;
+}
+
 static inline uuidv7_decode_result uuidv7_decode(const void *string) {
   static const uint8_t shuffles[64] = {
     0, 2, 4, 6, 9, 11, 14, 16, 19, 21, 24, 26, 28, 30, 32, 34,
@@ -95,9 +135,6 @@ static inline uuidv7_decode_result uuidv7_decode(const void *string) {
   };
 
   const uint8x16x4_t shuffle = vld1q_u8_x4(shuffles);
-  const uint8x16x4_t hex_values = vld1q_u8_x4(uuidv7_neon_hex_values);
-  const uint8x16_t zero = vdupq_n_u8('0');
-
   const uint8_t *characters = string;
   uint32_t tail;
   memcpy(&tail, characters + 32, 4);
@@ -106,22 +143,104 @@ static inline uuidv7_decode_result uuidv7_decode(const void *string) {
     vld1q_u8(characters + 16),
     vreinterpretq_u8_u32(vsetq_lane_u32(tail, vdupq_n_u32(0), 0))
   }};
-  uint8x16_t high = vqtbl3q_u8(string_0_36, shuffle.val[0]);
-  uint8x16_t low = vqtbl3q_u8(string_0_36, shuffle.val[1]);
-  high = vqtbl4q_u8(hex_values, vsubq_u8(high, zero));
-  low = vqtbl4q_u8(hex_values, vsubq_u8(low, zero));
-
   uint8x16x2_t string_0_32 = {{string_0_36.val[0], string_0_36.val[1]}};
-  uint8x16_t valid = vceqq_u8(vqtbl2q_u8(string_0_32, shuffle.val[2]), shuffle.val[3]);
-  valid = vandq_u8(valid, vandq_u8(high, low));
-  if (vminvq_u8(valid) == 0) {
-    const uuidv7_decode_result result = {{{0, 0}}, false};
-    return result;
+  return uuidv7_neon_decode_digits(
+    vqtbl3q_u8(string_0_36, shuffle.val[0]),
+    vqtbl3q_u8(string_0_36, shuffle.val[1]),
+    vceqq_u8(vqtbl2q_u8(string_0_32, shuffle.val[2]), shuffle.val[3])
+  );
+}
+
+static inline uuidv7_decode_result uuidv7_decode_compact(const void *string) {
+  const uint8_t *characters = string;
+  uint8x16_t first = vld1q_u8(characters);
+  uint8x16_t second = vld1q_u8(characters + 16);
+  return uuidv7_neon_decode_digits(
+    vuzp1q_u8(first, second),
+    vuzp2q_u8(first, second),
+    vdupq_n_u8(0xFF)
+  );
+}
+
+static const uint8_t uuidv7_neon_fallback_shuffles[16][32] = {
+  {0},
+  {
+    0, 2, 4, 6, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31,
+    1, 3, 5, 7, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 15, 17, 19, 21, 23, 25, 27, 29, 31,
+    1, 3, 5, 7, 9, 11, 14, 16, 18, 20, 22, 24, 26, 28, 30, 47
+  },
+  {
+    0, 2, 4, 6, 9, 11, 14, 16, 18, 20, 22, 24, 26, 28, 30, 46,
+    1, 3, 5, 7, 10, 12, 15, 17, 19, 21, 23, 25, 27, 29, 31, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 14, 16, 19, 21, 23, 25, 27, 29, 31,
+    1, 3, 5, 7, 9, 11, 13, 15, 17, 20, 22, 24, 26, 28, 30, 47
+  },
+  {
+    0, 2, 4, 6, 9, 11, 13, 15, 17, 20, 22, 24, 26, 28, 30, 46,
+    1, 3, 5, 7, 10, 12, 14, 16, 19, 21, 23, 25, 27, 29, 31, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 15, 17, 20, 22, 24, 26, 28, 30, 46,
+    1, 3, 5, 7, 9, 11, 14, 16, 19, 21, 23, 25, 27, 29, 31, 47
+  },
+  {
+    0, 2, 4, 6, 9, 11, 14, 16, 19, 21, 23, 25, 27, 29, 31, 46,
+    1, 3, 5, 7, 10, 12, 15, 17, 20, 22, 24, 26, 28, 30, 45, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 25, 27, 29, 31,
+    1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 24, 26, 28, 30, 47
+  },
+  {
+    0, 2, 4, 6, 9, 11, 13, 15, 17, 19, 21, 24, 26, 28, 30, 46,
+    1, 3, 5, 7, 10, 12, 14, 16, 18, 20, 22, 25, 27, 29, 31, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 15, 17, 19, 21, 24, 26, 28, 30, 46,
+    1, 3, 5, 7, 9, 11, 14, 16, 18, 20, 22, 25, 27, 29, 31, 47
+  },
+  {
+    0, 2, 4, 6, 9, 11, 14, 16, 18, 20, 22, 25, 27, 29, 31, 46,
+    1, 3, 5, 7, 10, 12, 15, 17, 19, 21, 24, 26, 28, 30, 45, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 14, 16, 19, 21, 24, 26, 28, 30, 46,
+    1, 3, 5, 7, 9, 11, 13, 15, 17, 20, 22, 25, 27, 29, 31, 47
+  },
+  {
+    0, 2, 4, 6, 9, 11, 13, 15, 17, 20, 22, 25, 27, 29, 31, 46,
+    1, 3, 5, 7, 10, 12, 14, 16, 19, 21, 24, 26, 28, 30, 45, 47
+  },
+  {
+    0, 2, 4, 6, 8, 10, 12, 15, 17, 20, 22, 25, 27, 29, 31, 46,
+    1, 3, 5, 7, 9, 11, 14, 16, 19, 21, 24, 26, 28, 30, 45, 47
+  },
+  {0}
+};
+
+static inline uuidv7_decode_result uuidv7_decode_fallback(const void *string, size_t count) {
+  const uint8_t *characters = string;
+  const int hyphens = uuidv7_fallback_hyphens(characters, count);
+  if (hyphens < 0) {
+    return uuidv7_decode_invalid();
   }
 
-  uint64x2_t words = vreinterpretq_u64_u8(vsliq_n_u8(low, high, 4));
-  uuidv7_decode_result result = {{{vgetq_lane_u64(words, 0), vgetq_lane_u64(words, 1)}}, true};
-  return result;
+  const uint8x16x2_t shuffle = vld1q_u8_x2(uuidv7_neon_fallback_shuffles[hyphens]);
+  uint8x16x3_t string_0_count = {{
+    vld1q_u8(characters),
+    vld1q_u8(characters + 16),
+    vld1q_u8(characters + count - 16)
+  }};
+  return uuidv7_neon_decode_digits(
+    vqtbl3q_u8(string_0_count, shuffle.val[0]),
+    vqtbl3q_u8(string_0_count, shuffle.val[1]),
+    vdupq_n_u8(0xFF)
+  );
 }
 
 #else
@@ -149,6 +268,37 @@ static inline __attribute__((target("avx2"), always_inline)) __m256i uuidv7_avx2
   const void *bytes
 ) {
   return _mm256_broadcastsi128_si256(_mm_loadu_si128((const __m128i *)bytes));
+}
+
+static inline __attribute__((target("avx2"), always_inline)) __m256i uuidv7_avx2_hex_offsets(
+  __m256i digits
+) {
+  const __m256i high_nibble_classes = uuidv7_avx2_broadcast(uuidv7_high_nibble_classes);
+  __m256i high_nibbles = _mm256_and_si256(_mm256_srli_epi16(digits, 4), _mm256_set1_epi8(0x0F));
+  return _mm256_shuffle_epi8(high_nibble_classes, high_nibbles);
+}
+
+static inline __attribute__((target("avx2"), always_inline)) __m256i uuidv7_avx2_non_hex_digits(
+  __m256i digits,
+  __m256i offsets
+) {
+  const __m256i low_nibble_classes = uuidv7_avx2_broadcast(uuidv7_low_nibble_classes);
+  __m256i classes = _mm256_and_si256(offsets, _mm256_shuffle_epi8(low_nibble_classes, digits));
+  return _mm256_cmpeq_epi8(classes, _mm256_setzero_si256());
+}
+
+static inline __attribute__((target("avx2"), always_inline)) __m128i uuidv7_avx2_pack_nibbles(
+  __m256i nibbles
+) {
+  __m256i pairs = _mm256_maddubs_epi16(nibbles, _mm256_set1_epi16(0x0110));
+  return _mm_packus_epi16(_mm256_castsi256_si128(pairs), _mm256_extracti128_si256(pairs, 1));
+}
+
+static inline __attribute__((target("avx2"), always_inline)) uuidv7_decode_result
+uuidv7_avx2_decode_result(__m128i bytes) {
+  uuidv7_decode_result result = {{{0, 0}}, true};
+  _mm_storeu_si128((__m128i *)result.bytes.words, bytes);
+  return result;
 }
 
 static inline __attribute__((target("avx2"))) void uuidv7_encode(
@@ -203,8 +353,6 @@ static inline __attribute__((target("avx2"))) uuidv7_decode_result uuidv7_decode
 
   const __m256i hyphen_positions = uuidv7_avx2_load(uuidv7_avx2_hyphen_positions);
   const __m256i hyphens = _mm256_and_si256(hyphen_positions, _mm256_set1_epi8('-'));
-  const __m256i high_nibble_classes = uuidv7_avx2_broadcast(uuidv7_high_nibble_classes);
-  const __m256i low_nibble_classes = uuidv7_avx2_broadcast(uuidv7_low_nibble_classes);
 
   const uint8_t *characters = string;
   uint32_t tail;
@@ -213,26 +361,138 @@ static inline __attribute__((target("avx2"))) uuidv7_decode_result uuidv7_decode
   __m256i invalid = _mm256_andnot_si256(_mm256_cmpeq_epi8(digits, hyphens), hyphen_positions);
   digits = _mm256_blendv_epi8(digits, _mm256_set1_epi32((int)tail), hyphen_positions);
 
-  __m256i high_nibbles = _mm256_and_si256(_mm256_srli_epi16(digits, 4), _mm256_set1_epi8(0x0F));
-  __m256i offsets = _mm256_shuffle_epi8(high_nibble_classes, high_nibbles);
-  __m256i classes = _mm256_and_si256(offsets, _mm256_shuffle_epi8(low_nibble_classes, digits));
-
-  invalid = _mm256_or_si256(invalid, _mm256_cmpeq_epi8(classes, _mm256_setzero_si256()));
+  __m256i offsets = uuidv7_avx2_hex_offsets(digits);
+  invalid = _mm256_or_si256(invalid, uuidv7_avx2_non_hex_digits(digits, offsets));
   if (__builtin_expect(_mm256_movemask_epi8(invalid) != 0, 0)) {
-    const uuidv7_decode_result result = {{{0, 0}}, false};
-    return result;
+    return uuidv7_decode_invalid();
   }
 
   __m256i values = _mm256_add_epi8(digits, offsets);
-  __m256i nibbles = _mm256_shuffle_epi8(values, uuidv7_avx2_load(shuffle));
-  __m256i pairs = _mm256_maddubs_epi16(nibbles, _mm256_set1_epi16(0x0110));
-  __m128i packed = _mm_packus_epi16(
-    _mm256_castsi256_si128(pairs), _mm256_extracti128_si256(pairs, 1)
+  __m128i packed = uuidv7_avx2_pack_nibbles(_mm256_shuffle_epi8(values, uuidv7_avx2_load(shuffle)));
+  return uuidv7_avx2_decode_result(
+    _mm_shuffle_epi8(packed, _mm_loadu_si128((const __m128i *)byte_shuffle))
   );
-  __m128i bytes = _mm_shuffle_epi8(packed, _mm_loadu_si128((const __m128i *)byte_shuffle));
-  uuidv7_decode_result result = {{{0, 0}}, true};
-  _mm_storeu_si128((__m128i *)result.bytes.words, bytes);
-  return result;
+}
+
+static inline __attribute__((target("avx2"), always_inline)) uuidv7_decode_result
+uuidv7_avx2_decode_digits(__m256i digits) {
+  const __m256i offsets = uuidv7_avx2_hex_offsets(digits);
+  if (_mm256_movemask_epi8(uuidv7_avx2_non_hex_digits(digits, offsets)) != 0) {
+    return uuidv7_decode_invalid();
+  }
+  return uuidv7_avx2_decode_result(uuidv7_avx2_pack_nibbles(_mm256_add_epi8(digits, offsets)));
+}
+
+static inline __attribute__((target("avx2"))) uuidv7_decode_result uuidv7_decode_compact(
+  const void *string
+) {
+  return uuidv7_avx2_decode_digits(uuidv7_avx2_load(string));
+}
+
+static const uint8_t uuidv7_avx2_fallback_shuffles[16][64] = {
+  {0},
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 0x80,
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 15,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 0x80,
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 15,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 0x80, 0x80,
+    2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 14, 15,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 14, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 0x80,
+    1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 14,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 14, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 0x80,
+    1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 14,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 14, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 0x80, 0x80,
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0x80, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 13, 14,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 13, 14, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 0x80,
+    1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 14,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 14, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 0x80,
+    1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 14,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 14, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 0x80, 0x80,
+    2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 0x80, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 13, 14,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 13, 14, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    0, 1, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 14, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 0x80,
+    1, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 0x80, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 13,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 13, 14, 15
+  },
+  {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 0x80,
+    1, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 0x80, 0x80, 0x80,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 13,
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 13, 14, 15
+  },
+  {0}
+};
+
+static inline __attribute__((target("avx2"))) uuidv7_decode_result uuidv7_decode_fallback(
+  const void *string,
+  size_t count
+) {
+  const uint8_t *characters = string;
+  const int hyphens = uuidv7_fallback_hyphens(characters, count);
+  if (hyphens < 0) {
+    return uuidv7_decode_invalid();
+  }
+
+  const uint8_t *shuffle = uuidv7_avx2_fallback_shuffles[hyphens];
+  return uuidv7_avx2_decode_digits(_mm256_or_si256(
+    _mm256_shuffle_epi8(uuidv7_avx2_load(characters), uuidv7_avx2_load(shuffle)),
+    _mm256_shuffle_epi8(uuidv7_avx2_load(characters + count - 32), uuidv7_avx2_load(shuffle + 32))
+  ));
 }
 
 #endif

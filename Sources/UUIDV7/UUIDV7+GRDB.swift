@@ -32,7 +32,7 @@
     public static let uuidv7FromDate = DatabaseFunction(
       "uuidv7_from_date",
       argumentCount: 1,
-      pure: true
+      pure: false
     ) { args in
       Date.fromDatabaseValue(args[0]).map { UUIDV7($0) }
     }
@@ -41,7 +41,7 @@
     public static let uuidv7FromUnixEpoch = DatabaseFunction(
       "uuidv7_from_unixepoch",
       argumentCount: 1,
-      pure: true
+      pure: false
     ) { args in
       TimeInterval.fromDatabaseValue(args[0]).map { UUIDV7(timeIntervalSince1970: $0) }
     }
@@ -61,7 +61,7 @@
       argumentCount: 1,
       pure: true
     ) { args in
-      UUIDV7.fromDatabaseValue(args[0])?.uuidString.lowercased()
+      UUIDV7.fromDatabaseValue(args[0])?.lowercasedUUIDString
     }
 
     /// A SQL function that converts a ``UUIDV7`` to a numeric unix epoch.

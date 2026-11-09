@@ -6,7 +6,7 @@ let package = Package(
   name: "Benchmarks",
   platforms: [.macOS(.v13)],
   dependencies: [
-    .package(path: ".."),
+    .package(name: "swift-uuidv7", path: ".."),
     .package(url: "https://github.com/ordo-one/package-benchmark", from: "1.4.0")
   ],
   targets: [

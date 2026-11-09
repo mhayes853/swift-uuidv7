@@ -23,7 +23,10 @@ struct `UUIDV7 tests` {
       (1, "0000000F-4240-7000-8000-000000000001"),
       (10, "0000000F-4240-7000-8000-00000000000A"),
       (40, "0000000F-4240-7000-8000-000000000028"),
-      (27822, "0000000F-4240-7000-8000-00000000AE6C"),
+      (256, "0000000F-4240-7000-8000-000000000100"),
+      (27822, "0000000F-4240-7000-8000-000000006CAE"),
+      (65536, "0000000F-4240-7000-8000-000000010000"),
+      (0x1000000, "0000000F-4240-7000-8000-000001000000"),
       (UInt32.max, "0000000F-4240-7000-8000-0000FFFFFFFF")
     ]
   )
@@ -109,11 +112,6 @@ struct `UUIDV7 tests` {
   @Test(
     arguments: [
       "",
-      "0191D85B8C4174459473A0B0C24B58A4",
-      "0191d85b8c4174459473a0b0c24b58a4",
-      "0191D85B-8C4174459473A0B0C24B58A4",
-      "0191D85B-8C41-74459473A0B0C24B58A4",
-      "0191D85B-8C41-7445-9473A0B0C24B58A4",
       "0191D85B8C41-7445-9473-A0B0C24B58A4",
       "0191D85B-8C41-7445-9473-A0B0C24B58A",
       "0191D85B-8C41-7445-9473-A0B0C24B58A40",
@@ -534,7 +532,7 @@ struct `UUIDV7 tests` {
         (1, "0191D8EE-F668-7000-8000-000000000001"),
         (10, "0191D8EE-F668-7000-8000-00000000000A"),
         (40, "0191D8EE-F668-7000-8000-000000000028"),
-        (27822, "0191D8EE-F668-7000-8000-00000000AE6C")
+        (27822, "0191D8EE-F668-7000-8000-000000006CAE")
       ]
     )
     func `From Date And Deterministic Integer`(integer: UInt32, uuidString: String) async throws {
@@ -562,10 +560,13 @@ struct `UUIDV7 tests` {
       #expect(uuid.date == date.addingTimeInterval(60))
     }
 
-    @Test
-    func `Decode Valid UUIDV7`() throws {
+    @Test(arguments: [
+      "1915C92E-B61E-7E3E-AFEA-2B5F3EA2DCF0",
+      "1915C92EB61E7E3EAFEA2B5F3EA2DCF0"
+    ])
+    func `Decode Valid UUIDV7`(string: String) throws {
       let u = UUID(uuidString: "1915C92E-B61E-7E3E-AFEA-2B5F3EA2DCF0")!
-      let data = try JSONEncoder().encode(u)
+      let data = try JSONEncoder().encode(string)
       let u7 = try JSONDecoder().decode(UUIDV7.self, from: data)
       #expect(u7.rawValue == u)
     }
