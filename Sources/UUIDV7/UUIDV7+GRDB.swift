@@ -61,7 +61,7 @@
       argumentCount: 1,
       pure: true
     ) { args in
-      UUIDV7.fromDatabaseValue(args[0])?.uuidString.lowercased()
+      UUIDV7.fromDatabaseValue(args[0])?.lowercasedUUIDString
     }
 
     /// A SQL function that converts a ``UUIDV7`` to a numeric unix epoch.

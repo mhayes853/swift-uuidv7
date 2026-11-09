@@ -477,7 +477,7 @@
       var isDeterministic: Bool { true }
 
       func invoke(_ decoder: inout some QueryDecoder) throws -> QueryBinding {
-        try self.decodeUUIDV7(from: &decoder)?.uuidString.lowercased().queryBinding ?? .null
+        try self.decodeUUIDV7(from: &decoder)?.lowercasedUUIDString.queryBinding ?? .null
       }
     }
 
