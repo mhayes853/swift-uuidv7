@@ -41,28 +41,29 @@
 
   extension UUIDV7.BytesRepresentation: QueryBindable {
     public var queryBinding: QueryBinding {
-      .blob(withUnsafeBytes(of: queryOutput.uuid, [UInt8].init))
+      .blob(withUnsafeBytes(of: self.queryOutput.uuid, [UInt8].init))
     }
 
     public init?(queryBinding: QueryBinding) {
-      guard case .blob(let data) = queryBinding else { return nil }
-      guard data.count == 16 else { return nil }
-      let output = data.withUnsafeBytes { UUIDV7(uuid: $0.load(as: UUIDBytes.self)) }
-      guard let output else { return nil }
-      self.init(queryOutput: output)
+      guard case .blob(let bytes) = queryBinding, let uuid = UUIDV7(blob: bytes) else { return nil }
+      self.init(queryOutput: uuid)
     }
   }
 
   extension UUIDV7.BytesRepresentation: QueryDecodable {
     public init(decoder: inout some QueryDecoder) throws {
-      let queryOutput = try [UInt8](decoder: &decoder)
-      guard queryOutput.count == 16 else { throw InvalidBytes() }
-      let output = queryOutput.withUnsafeBytes { UUIDV7(uuid: $0.load(as: UUIDBytes.self)) }
-      guard let output else { throw InvalidBytes() }
-      self.init(queryOutput: output)
+      guard let uuid = try UUIDV7(blob: [UInt8](decoder: &decoder)) else { throw InvalidBytes() }
+      self.init(queryOutput: uuid)
     }
 
     private struct InvalidBytes: Error {}
+  }
+
+  extension UUIDV7 {
+    fileprivate init?(blob: [UInt8]) {
+      guard blob.count == 16 else { return nil }
+      self.init(uuid: blob.withUnsafeBytes { $0.loadUnaligned(as: UUIDBytes.self) })
+    }
   }
 
   extension UUIDV7.BytesRepresentation: SQLiteType {
@@ -101,12 +102,12 @@
 
   extension UUIDV7.UppercaseRepresentation: QueryBindable {
     public var queryBinding: QueryBinding {
-      .text(self.queryOutput.uuidString.uppercased())
+      .text(self.queryOutput.uuidString)
     }
 
     public init?(queryBinding: QueryBinding) {
-      guard case .text(let uuidString) = queryBinding else { return nil }
-      guard let uuid = UUIDV7(uuidString: uuidString) else { return nil }
+      guard case .text(let uuidString) = queryBinding, let uuid = UUIDV7(uuidString: uuidString)
+      else { return nil }
       self.init(queryOutput: uuid)
     }
   }
